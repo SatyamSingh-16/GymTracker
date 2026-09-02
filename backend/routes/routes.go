@@ -2,6 +2,7 @@ package routes
 
 import (
 	"gymtracker-backend/handlers"
+	customMiddleware "gymtracker-backend/middleware"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -28,6 +29,16 @@ func SetupRouter() *chi.Mux {
 
 	// Health Check Endpoint
 	r.Get("/api/health", handlers.HealthCheck)
+
+	// Authentication Endpoints (Public)
+	r.Post("/api/auth/register", handlers.Register)
+	r.Post("/api/auth/login", handlers.Login)
+
+	// Protected Endpoints (Requires JWT Auth Middleware)
+	r.Group(func(r chi.Router) {
+		r.Use(customMiddleware.AuthMiddleware)
+		r.Get("/api/auth/me", handlers.Me)
+	})
 
 	return r
 }
