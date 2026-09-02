@@ -1,0 +1,28 @@
+# Environment variables (SECURITY - DO NOT COMMIT)
+.env
+*.env
+!.env.example
+
+# Go Binaries & Build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+gymtracker-backend
+backend/gymtracker-backend
+
+# Node / Next.js dependencies and build folders
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# Operating System & IDE files
+.DS_Store
+.vscode/
+.idea/
+*.log
