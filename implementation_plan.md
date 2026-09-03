@@ -1,117 +1,103 @@
-# Phase 2 Micro-Step 6 Plan: Authentication Utilities (`utils/hash.go` & `utils/jwt.go`)
+# Implementation Plan: Automated Backend Testing for GymTracker
 
-🎉 **Phase 1 (Backend Foundation)** is complete! All 5 core backend files (`go.mod`, `.env`, `models/models.go`, `dto/dto.go`, `db/db.go`, `main.go`) have been created.
-
-Now we enter **Phase 2: User Authentication & Security**.
-
----
-
-## 💡 Why This Step Now? (Architectural Rationale)
-
-Before we can build API endpoints for User Registration (`POST /api/auth/register`) or Login (`POST /api/auth/login`), we need fundamental security utilities:
-
-1. **Password Hashing (`utils/hash.go`)**:
-   - Uses `golang.org/x/crypto/bcrypt` to hash raw passwords before storing them in PostgreSQL.
-   - Provides `ComparePasswordHash()` to safely verify login credentials without storing plaintext passwords.
-
-2. **JWT Token Management (`utils/jwt.go`)**:
-   - Uses `github.com/golang-jwt/jwt/v5` to sign JSON Web Tokens containing the user's `ID` and `Email` with our `JWT_SECRET`.
-   - Provides `ValidateToken()` to verify tokens on protected API endpoints.
+## Goal Description
+Introduce automated testing to the GymTracker Go backend. Since this is your first time working with automated backend tests, this plan explains **all fundamental concepts**, **why we test each component**, and **how Go's built-in testing engine works**, before we create the test suite.
 
 ---
 
-## What We Will Create in Micro-Step 6
+## 🎓 Core Concepts: Testing in Go Explained Simply
 
-1. **[`Go_Projects/GymTracker/backend/utils/hash.go`](file:///Users/satyamsingh2730/Desktop/GoLang/Battle/Go_Projects/GymTracker/backend/utils/hash.go)**:
-   - `HashPassword(password string) (string, error)`
-   - `CheckPasswordHash(password, hash string) bool`
+### 1. What is Automated Testing?
+Instead of manually opening a browser or sending requests with Postman to check if things work, automated tests are small Go programs that run your functions with sample input and automatically verify whether the output matches expectations.
 
-2. **[`Go_Projects/GymTracker/backend/utils/jwt.go`](file:///Users/satyamsingh2730/Desktop/GoLang/Battle/Go_Projects/GymTracker/backend/utils/jwt.go)**:
-   - `GenerateToken(userID int, email string) (string, error)`
-   - `ValidateToken(tokenStr string) (*Claims, error)`
+### 2. How Go Testing Works (Standard Library Conventions)
+Go has testing built directly into the language via the `testing` package:
+- **File Naming**: Any file ending in `_test.go` (e.g. `hash_test.go`) is recognized by Go as a test file. Go ignores these files when building the production binary, so they add **zero bloat** to production code.
+- **Function Naming**: Test functions must start with `Test` and accept `t *testing.T` (e.g. `func TestHashPassword(t *testing.T)`).
+- **`*testing.T`**: The test runner object. If something doesn't match expectations, you call `t.Errorf(...)` or `t.Fatalf(...)` to mark the test as failed.
+- **Running Tests**: You simply run `go test ./...` in the terminal to execute all tests across the entire project in milliseconds.
+
+### 3. What Are We Testing & Why?
+
+| Layer | What It Does | Why Test It? | What Could Go Wrong Without Tests? |
+| :--- | :--- | :--- | :--- |
+| **`utils/hash.go`** | Bcrypt password hashing & comparison | Ensure passwords are encrypted securely and verification never gives false positives or false negatives. | Plaintext saved in DB, or valid passwords rejected during login. |
+| **`utils/jwt.go`** | Generates and verifies JWT tokens with expiration | Ensure user identity claims (`UserID`, `Email`) are preserved, expired tokens are rejected, and tampered tokens fail. | Unauthorized users spoofing other users' IDs or expired tokens granting eternal access. |
+| **`middleware/auth.go`** | Protects API routes, extracts Bearer token, sets UserID in Context | Ensure requests without tokens or with malformed headers are immediately blocked (`401 Unauthorized`). | Protected user workout data exposed to unauthenticated users. |
+| **`handlers/health.go`** | Server health check endpoint | Verify HTTP status codes (`200 OK`) and JSON responses using Go's `net/http/httptest` package. | Broken response formatting or crashing on simple pings. |
 
 ---
 
-## Code Preview
+## 💡 How Could We Have Done It Better? (Design Decisions & Alternatives)
 
-### 1. `utils/hash.go`
+1. **Table-Driven Tests (Idiomatic Go)**:
+   - *Naive approach*: Writing copy-pasted code for each test scenario.
+   - *Better approach (Idiomatic Go)*: Defining a slice of test cases (structs with `name`, `input`, `expectedOutput`) and iterating over them with `t.Run(tc.name, func(t *testing.T) { ... })`. This gives crystal-clear failure reports telling you exactly which scenario failed.
+2. **HTTP Testing without starting a live network server (`net/http/httptest`)**:
+   - *Naive approach*: Actually starting a server on port `:8080` and sending real HTTP requests over the network (slow, can conflict with open ports).
+   - *Better approach*: Using Go's built-in `httptest.NewRecorder()` and `httptest.NewRequest()`. It calls the HTTP handler directly in memory in less than 1 millisecond.
+3. **Database Separation (Unit Tests vs Database Integration Tests)**:
+   - For this initial step, we isolate business logic (utils, tokens, middleware, request validation) so tests run **instantaneously** without needing a live PostgreSQL instance running on your machine.
+   - In subsequent steps, we can add database integration tests using a dedicated test database or test transactions.
 
-```go
-package utils
+---
 
-import "golang.org/x/crypto/bcrypt"
+## User Review Required
 
-func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
-	return string(bytes), err
-}
+> [!NOTE]
+> No existing production code needs to be modified. All work consists of adding new `*_test.go` test files.
 
-func CheckPasswordHash(password, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
-}
+Please review the proposed test structure below. Once you approve, we will create these test files and run them.
+
+---
+
+## Proposed Changes
+
+### Layer 1: Utilities (`backend/utils/`)
+
+#### [NEW] [hash_test.go](file:///Users/satyamsingh2730/Desktop/GoLang/Battle/Go_Projects/GymTracker/backend/utils/hash_test.go)
+- `TestHashPassword`: Validates that hashing a password produces a non-empty, non-plaintext bcrypt hash, and that two hashes of the same password differ (bcrypt salting).
+- `TestCheckPasswordHash`: Validates that the correct password matches the hash, and an incorrect password returns `false`.
+
+#### [NEW] [jwt_test.go](file:///Users/satyamsingh2730/Desktop/GoLang/Battle/Go_Projects/GymTracker/backend/utils/jwt_test.go)
+- `TestGenerateAndValidateToken`: Validates generating a token with a `userID` and `email`, then verifying that `ValidateToken` extracts the identical `userID` and `email`.
+- `TestValidateToken_Invalid`: Validates that empty strings, tampered tokens, and garbage strings return an error and fail validation.
+
+---
+
+### Layer 2: Middleware (`backend/middleware/`)
+
+#### [NEW] [auth_test.go](file:///Users/satyamsingh2730/Desktop/GoLang/Battle/Go_Projects/GymTracker/backend/middleware/auth_test.go)
+- Table-driven test using `httptest.NewRecorder()` and a dummy protected handler:
+  1. **Missing Authorization Header** -> Expect `401 Unauthorized`.
+  2. **Malformed Header (e.g. `Basic abc`)** -> Expect `401 Unauthorized`.
+  3. **Invalid/Forged Token** -> Expect `401 Unauthorized`.
+  4. **Valid Bearer Token** -> Expect `200 OK` and verify that `GetUserIDFromContext` correctly extracts the user ID.
+
+---
+
+### Layer 3: Handlers (`backend/handlers/`)
+
+#### [NEW] [health_test.go](file:///Users/satyamsingh2730/Desktop/GoLang/Battle/Go_Projects/GymTracker/backend/handlers/health_test.go)
+- Tests `HealthCheck` using `httptest.NewRequest("GET", "/api/health", nil)`:
+  - Asserts HTTP status code is `200 OK`.
+  - Asserts JSON response body contains `{"status":"ok", ...}`.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+Run all tests from the backend directory:
+```bash
+cd backend
+go test -v ./...
 ```
-
-### 2. `utils/jwt.go`
-
-```go
-package utils
-
-import (
-	"errors"
-	"os"
-	"time"
-
-	"github.com/golang-jwt/jwt/v5"
-)
-
-type Claims struct {
-	UserID int    `json:"user_id"`
-	Email  string `json:"email"`
-	jwt.RegisteredClaims
-}
-
-func getJWTSecret() []byte {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		secret = "super-secret-jwt-key-gymtracker-2026"
-	}
-	return []byte(secret)
-}
-
-func GenerateToken(userID int, email string) (string, error) {
-	claims := &Claims{
-		UserID: userID,
-		Email:  email,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * 7 * time.Hour)), // 7 days valid
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(getJWTSecret())
-}
-
-func ValidateToken(tokenStr string) (*Claims, error) {
-	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		return getJWTSecret(), nil
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
-		return nil, errors.New("invalid or expired token")
-	}
-
-	return claims, nil
-}
-```
-
----
-
-> [!IMPORTANT]
-> Please approve **Micro-Step 6** to create `utils/hash.go` and `utils/jwt.go`. Once created, we'll proceed to **Micro-Step 7 (Auth Middleware)**!
+Expected output:
+- `=== RUN TestHashPassword` -> `--- PASS`
+- `=== RUN TestCheckPasswordHash` -> `--- PASS`
+- `=== RUN TestGenerateAndValidateToken` -> `--- PASS`
+- `=== RUN TestValidateToken_Invalid` -> `--- PASS`
+- `=== RUN TestAuthMiddleware` -> `--- PASS`
+- `=== RUN TestHealthCheck` -> `--- PASS`
+- Final verdict: `PASS` across all packages.
