@@ -31,7 +31,7 @@ func InitDB() (*sql.DB, error) {
 
 	if err = DB.Ping(); err != nil {
 		log.Printf("⚠️ Warning: PostgreSQL database ping failed: %v", err)
-		log.Println("Ensure PostgreSQL server is running and database '%s' exists.", getEnv("DB_NAME", "gymtracker"))
+		log.Printf("Ensure PostgreSQL server is running and database '%s' exists.\n", getEnv("DB_NAME", "gymtracker"))
 	} else {
 		log.Println("✅ Successfully connected to PostgreSQL database!")
 		if err := createTables(); err != nil {

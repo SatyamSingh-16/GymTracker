@@ -146,6 +146,10 @@ func GetUserWorkouts(userID int) ([]models.WorkoutLog, error) {
 		}
 	}
 
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating workout rows: %w", err)
+	}
+
 	result := make([]models.WorkoutLog, 0, len(workoutOrder))
 	for _, id := range workoutOrder {
 		result = append(result, *workoutMap[id])
