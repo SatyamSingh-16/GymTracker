@@ -30,6 +30,10 @@ func SetupRouter() *chi.Mux {
 	// Health Check Endpoint
 	r.Get("/api/health", handlers.HealthCheck)
 
+	// Exercise Catalog Endpoints (Public)
+	r.Get("/api/exercises", handlers.GetAllExercises)
+	r.Get("/api/exercises/{id}", handlers.GetExerciseByID)
+
 	// Authentication Endpoints (Public)
 	r.Post("/api/auth/register", handlers.Register)
 	r.Post("/api/auth/login", handlers.Login)
@@ -37,7 +41,18 @@ func SetupRouter() *chi.Mux {
 	// Protected Endpoints (Requires JWT Auth Middleware)
 	r.Group(func(r chi.Router) {
 		r.Use(customMiddleware.AuthMiddleware)
+
+		// Profile
 		r.Get("/api/auth/me", handlers.Me)
+
+		// Workouts
+		r.Post("/api/workouts", handlers.CreateWorkout)
+		r.Get("/api/workouts", handlers.GetUserWorkouts)
+		r.Get("/api/workouts/{id}", handlers.GetWorkoutByID)
+		r.Delete("/api/workouts/{id}", handlers.DeleteWorkout)
+
+		// Progress Analytics
+		r.Get("/api/progress/{exercise_id}", handlers.GetProgress)
 	})
 
 	return r
