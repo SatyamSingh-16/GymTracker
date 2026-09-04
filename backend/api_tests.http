@@ -1,0 +1,149 @@
+### ==============================================================================
+### GymTracker API - Interactive REST Client Test Suite
+### Compatible with VS Code REST Client extension, Cursor, GoLand, IntelliJ, etc.
+### ==============================================================================
+
+@baseUrl = http://localhost:8080/api
+@contentType = application/json
+
+### ------------------------------------------------------------------------------
+### 1. Health Check
+### ------------------------------------------------------------------------------
+# @name healthCheck
+GET {{baseUrl}}/health
+Accept: {{contentType}}
+
+### ------------------------------------------------------------------------------
+### 2. Exercise Catalog (Public Endpoints)
+### ------------------------------------------------------------------------------
+
+# @name getAllExercises
+# Fetches all seed exercises categorized by muscle group
+GET {{baseUrl}}/exercises
+Accept: {{contentType}}
+
+###
+
+# @name getExerciseByID
+# Fetches a specific exercise (e.g. Exercise ID 1 = Barbell Bench Press)
+GET {{baseUrl}}/exercises/1
+Accept: {{contentType}}
+
+
+### ------------------------------------------------------------------------------
+### 3. Authentication (Public Endpoints)
+### ------------------------------------------------------------------------------
+
+# @name registerUser
+# Registers a new athlete account
+POST {{baseUrl}}/auth/register
+Content-Type: {{contentType}}
+
+{
+  "name": "Alex Lifter",
+  "email": "alex.lifter@example.com",
+  "password": "StrongPassword123!"
+}
+
+###
+
+# @name loginUser
+# Logs in and captures the JWT token into @authToken
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "alex.lifter@example.com",
+  "password": "StrongPassword123!"
+}
+
+### Capture token from login response
+@authToken = {{loginUser.response.body.token}}
+
+
+### ------------------------------------------------------------------------------
+### 4. User Profile (Protected - Requires JWT)
+### ------------------------------------------------------------------------------
+
+# @name getMe
+# Retrieves profile information of the currently authenticated user
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{authToken}}
+Accept: {{contentType}}
+
+
+### ------------------------------------------------------------------------------
+### 5. Workout Logging (Protected - Requires JWT)
+### ------------------------------------------------------------------------------
+
+# @name logWorkout
+# Creates a new workout session with multiple exercises and sets
+POST {{baseUrl}}/workouts
+Authorization: Bearer {{authToken}}
+Content-Type: {{contentType}}
+
+{
+  "workout_date": "2026-09-04",
+  "notes": "Chest and Triceps focus. Felt strong on bench!",
+  "sets": [
+    {
+      "exercise_id": 1,
+      "set_number": 1,
+      "reps": 10,
+      "weight_kg": 60.0
+    },
+    {
+      "exercise_id": 1,
+      "set_number": 2,
+      "reps": 8,
+      "weight_kg": 75.0
+    },
+    {
+      "exercise_id": 1,
+      "set_number": 3,
+      "reps": 6,
+      "weight_kg": 85.0
+    },
+    {
+      "exercise_id": 2,
+      "set_number": 1,
+      "reps": 12,
+      "weight_kg": 20.0
+    }
+  ]
+}
+
+###
+
+# @name getAllWorkouts
+# Fetches all logged workout sessions for the authenticated user
+GET {{baseUrl}}/workouts
+Authorization: Bearer {{authToken}}
+Accept: {{contentType}}
+
+###
+
+# @name getWorkoutByID
+# Retrieves details of a specific workout log (e.g. ID 1)
+GET {{baseUrl}}/workouts/1
+Authorization: Bearer {{authToken}}
+Accept: {{contentType}}
+
+###
+
+# @name deleteWorkout
+# Deletes a specific workout log and cascades its sets
+DELETE {{baseUrl}}/workouts/1
+Authorization: Bearer {{authToken}}
+
+
+### ------------------------------------------------------------------------------
+### 6. Progress & Analytics (Protected - Requires JWT)
+### ------------------------------------------------------------------------------
+
+# @name getExerciseProgress
+# Retrieves aggregated metrics (Max Weight, Estimated 1RM via Epley formula, Total Volume)
+# for Exercise ID 1 (Barbell Bench Press) over time
+GET {{baseUrl}}/progress/1
+Authorization: Bearer {{authToken}}
+Accept: {{contentType}}
