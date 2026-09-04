@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { exercisesApi, workoutsApi } from '../api/endpoints';
 import type { Exercise } from '../types';
 import { Dumbbell, Plus, Trash2, Calendar, FileText, CheckCircle, AlertCircle, Zap } from 'lucide-react';
@@ -13,11 +13,14 @@ interface SetInput {
 
 export const LogWorkoutPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const dateParam = searchParams.get('date');
+
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loadingExercises, setLoadingExercises] = useState(true);
 
   // Form State
-  const [workoutDate, setWorkoutDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [workoutDate, setWorkoutDate] = useState(() => dateParam || new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [sets, setSets] = useState<SetInput[]>([
     { exercise_id: 1, set_number: 1, reps: 10, weight_kg: 60 },
