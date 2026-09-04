@@ -1,0 +1,538 @@
+openapi: 3.0.3
+info:
+  title: GymTracker REST API
+  description: |
+    Full-featured RESTful API for the GymTracker application built with Go (Chi router) and PostgreSQL.
+    Provides authentication, exercise catalog browsing, workout logging with nested sets, and 1RM/volume progress analytics.
+  version: 1.0.0
+  contact:
+    name: GymTracker Engineering Team
+
+servers:
+  - url: http://localhost:8080/api
+    description: Local Development Server
+
+paths:
+  /health:
+    get:
+      summary: Health Check
+      description: Returns the operational status of the Go REST API server.
+      tags:
+        - Health
+      responses:
+        '200':
+          description: API server is running smoothly.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  message:
+                    type: string
+                    example: GymTracker Go REST API is running smoothly!
+
+  /exercises:
+    get:
+      summary: List All Exercises
+      description: Retrieves the complete catalog of predefined exercises grouped by muscle category.
+      tags:
+        - Exercises
+      responses:
+        '200':
+          description: A list of exercise objects.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Exercise'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /exercises/{id}:
+    get:
+      summary: Get Exercise by ID
+      description: Retrieves details of a single exercise by its integer ID.
+      tags:
+        - Exercises
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The unique identifier of the exercise.
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: Exercise details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Exercise not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/register:
+    post:
+      summary: Register User
+      description: Registers a new athlete user account with name, email, and password.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully. Returns JWT token and profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email already in use.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/login:
+    post:
+      summary: Login User
+      description: Authenticates user credentials and issues a signed JWT token valid for 7 days.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful. Returns JWT token and profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Invalid email or password.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/me:
+    get:
+      summary: Get Current User Profile
+      description: Retrieves the profile of the currently authenticated user using their JWT Bearer token.
+      tags:
+        - Authentication
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workouts:
+    post:
+      summary: Log a Workout Session
+      description: Records a complete workout session including multiple exercises and sets.
+      tags:
+        - Workouts
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkoutRequest'
+      responses:
+        '201':
+          description: Workout session recorded successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutLog'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List User Workouts
+      description: Fetches all logged workout sessions for the authenticated user, ordered chronologically.
+      tags:
+        - Workouts
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of workout logs with nested sets.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkoutLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workouts/{id}:
+    get:
+      summary: Get Workout by ID
+      description: Retrieves a single workout log by its ID ensuring the requesting user owns it.
+      tags:
+        - Workouts
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the workout log.
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: Workout log details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete Workout
+      description: Deletes a workout log and cascades deletion to all associated sets.
+      tags:
+        - Workouts
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the workout log to delete.
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: Workout deleted successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: workout deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /progress/{exercise_id}:
+    get:
+      summary: Get Exercise Progress Analytics
+      description: |
+        Calculates and returns performance metrics for a specific exercise across all user workout logs:
+        - Maximum weight lifted per session.
+        - Estimated 1RM (calculated via Epley formula: `Weight * (1 + Reps / 30.0)`).
+        - Total volume (`Sum(Reps * Weight)`).
+      tags:
+        - Progress
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: exercise_id
+          in: path
+          required: true
+          description: The ID of the exercise to analyze.
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: Array of progress data points sorted chronologically.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProgressDataPoint'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Enter your JWT Bearer token obtained from `/api/auth/login` or `/api/auth/register`.
+
+  responses:
+    BadRequest:
+      description: Bad request / validation error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing, invalid, or expired JWT Bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Requested resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Invalid credentials
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Alex Lifter
+        email:
+          type: string
+          format: email
+          example: alex.lifter@example.com
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-09-04T10:00:00Z'
+
+    RegisterRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+      properties:
+        name:
+          type: string
+          example: Alex Lifter
+        email:
+          type: string
+          format: email
+          example: alex.lifter@example.com
+        password:
+          type: string
+          format: password
+          minLength: 6
+          example: StrongPassword123!
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: alex.lifter@example.com
+        password:
+          type: string
+          format: password
+          example: StrongPassword123!
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Signed JWT Bearer token valid for 7 days.
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        user:
+          $ref: '#/components/schemas/User'
+
+    Exercise:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Barbell Bench Press
+        category:
+          type: string
+          example: Chest
+        equipment:
+          type: string
+          example: Barbell
+
+    WorkoutSet:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        workout_log_id:
+          type: integer
+          example: 1
+        exercise_id:
+          type: integer
+          example: 1
+        exercise_name:
+          type: string
+          example: Barbell Bench Press
+        set_number:
+          type: integer
+          example: 1
+        reps:
+          type: integer
+          example: 10
+        weight_kg:
+          type: number
+          format: float
+          example: 80.0
+
+    WorkoutLog:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        user_id:
+          type: integer
+          example: 1
+        workout_date:
+          type: string
+          format: date
+          example: '2026-09-04'
+        notes:
+          type: string
+          example: Chest and Triceps focus.
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-09-04T11:00:00Z'
+        sets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutSet'
+
+    CreateWorkoutRequest:
+      type: object
+      required:
+        - workout_date
+        - sets
+      properties:
+        workout_date:
+          type: string
+          format: date
+          example: '2026-09-04'
+        notes:
+          type: string
+          example: Push day volume workout.
+        sets:
+          type: array
+          items:
+            type: object
+            required:
+              - exercise_id
+              - set_number
+              - reps
+              - weight_kg
+            properties:
+              exercise_id:
+                type: integer
+                example: 1
+              set_number:
+                type: integer
+                example: 1
+              reps:
+                type: integer
+                example: 8
+              weight_kg:
+                type: number
+                format: float
+                example: 80.0
+
+    ProgressDataPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          example: '2026-09-04'
+        max_weight:
+          type: number
+          format: float
+          example: 85.0
+        estimated_1rm:
+          type: number
+          format: float
+          description: Calculated via Epley formula
+          example: 102.0
+        total_volume:
+          type: number
+          format: float
+          description: Sum of (reps * weight) across all sets on that date
+          example: 1710.0
