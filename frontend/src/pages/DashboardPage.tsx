@@ -1,16 +1,42 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { workoutsApi } from '../api/endpoints';
 import type { WorkoutLog } from '../types';
 import { StatCard } from '../components/common/StatCard';
-import { PlusCircle, Flame, Dumbbell, Trophy, Calendar, Trash2, ArrowRight } from 'lucide-react';
+import {
+  PlusCircle,
+  Flame,
+  Dumbbell,
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  Trash2,
+  ArrowRight,
+  FolderOpen,
+  Folder,
+  Moon,
+  Sparkles,
+  Zap,
+} from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
   const { user } = useAuth();
   const [workouts, setWorkouts] = useState<WorkoutLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  // Today string in YYYY-MM-DD
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    return d.toISOString().split('T')[0];
+  }, []);
+
+  // Currently selected date to view
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+
+  // The end date of the 7-day strip window (defaults to today)
+  const [windowEndDate, setWindowEndDate] = useState<Date>(() => new Date());
 
   const fetchWorkouts = async () => {
     try {
@@ -33,7 +59,7 @@ export const DashboardPage: React.FC = () => {
     setDeletingId(id);
     try {
       await workoutsApi.delete(id);
-      setWorkouts(workouts.filter((w) => w.id !== id));
+      setWorkouts((prev) => prev.filter((w) => w.id !== id));
     } catch (err) {
       console.error('Failed to delete workout:', err);
       alert('Failed to delete workout. Please try again.');
@@ -42,13 +68,108 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
-  // KPI Calculations
-  const totalWorkouts = workouts.length;
-  const totalVolume = workouts.reduce((total, w) => {
-    const workoutVol = (w.sets || []).reduce((sTot, s) => sTot + s.reps * s.weight_kg, 0);
-    return total + workoutVol;
+  // Group workouts by date: map 'YYYY-MM-DD' => WorkoutLog[]
+  const workoutsByDate = useMemo(() => {
+    const map: Record<string, WorkoutLog[]> = {};
+    for (const w of workouts) {
+      if (!map[w.workout_date]) {
+        map[w.workout_date] = [];
+      }
+      map[w.workout_date].push(w);
+    }
+    return map;
+  }, [workouts]);
+
+  // Requirement 1: Total unique days the client attended the gym
+  const uniqueGymDays = Object.keys(workoutsByDate).length;
+
+  // Requirement 2: Total calories burned estimate
+  // Exercise science formula: ~8.5 kcal per working set + 0.08 kcal per kg of volume moved
+  const totalCaloriesBurned = useMemo(() => {
+    return Math.round(
+      workouts.reduce((total, w) => {
+        const wVol = (w.sets || []).reduce((sum, s) => sum + s.reps * s.weight_kg, 0);
+        const wSets = w.sets?.length || 0;
+        return total + (wSets * 8.5 + wVol * 0.08);
+      }, 0)
+    );
+  }, [workouts]);
+
+  const totalSets = useMemo(() => {
+    return workouts.reduce((total, w) => total + (w.sets?.length || 0), 0);
+  }, [workouts]);
+
+  // Requirement 3: 7-Day sliding window calculation
+  const sevenDays = useMemo(() => {
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(windowEndDate);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' }); // e.g. Mon, Tue
+      const dayNum = d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' }); // e.g. 04 Sep
+      const dayWorkouts = workoutsByDate[dateStr] || [];
+      const hasWorkouts = dayWorkouts.length > 0;
+
+      // Extract a representative focus / name (e.g. from notes "Back & Bicep" or first exercise name)
+      let focusLabel = 'Rest Day';
+      if (hasWorkouts) {
+        const notesWithText = dayWorkouts.find((w) => w.notes?.trim());
+        if (notesWithText && notesWithText.notes.trim()) {
+          focusLabel = notesWithText.notes.trim();
+        } else {
+          const firstEx = dayWorkouts[0]?.sets?.[0]?.exercise_name;
+          focusLabel = firstEx ? `${firstEx}` : 'Workout Logged';
+        }
+      }
+
+      days.push({
+        dateStr,
+        dayName,
+        dayNum,
+        hasWorkouts,
+        workouts: dayWorkouts,
+        focusLabel,
+        isToday: dateStr === todayStr,
+      });
+    }
+    return days;
+  }, [windowEndDate, workoutsByDate, todayStr]);
+
+  // Shift 7-day window backwards or forwards
+  const shiftWindow = (daysCount: number) => {
+    setWindowEndDate((prev) => {
+      const next = new Date(prev);
+      next.setDate(next.getDate() + daysCount);
+      return next;
+    });
+  };
+
+  const jumpToToday = () => {
+    setWindowEndDate(new Date());
+    setSelectedDate(todayStr);
+  };
+
+  const handleDatePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.value) return;
+    const pickedDateStr = e.target.value;
+    setSelectedDate(pickedDateStr);
+    // Align window so selected date is in view
+    const picked = new Date(pickedDateStr);
+    setWindowEndDate(picked);
+  };
+
+  // Selected date workouts
+  const selectedDayWorkouts = workoutsByDate[selectedDate] || [];
+  const selectedDayCalories = Math.round(
+    selectedDayWorkouts.reduce((sum, w) => {
+      const vol = (w.sets || []).reduce((sSum, s) => sSum + s.reps * s.weight_kg, 0);
+      return sum + (w.sets?.length || 0) * 8.5 + vol * 0.08;
+    }, 0)
+  );
+  const selectedDayVolume = selectedDayWorkouts.reduce((sum, w) => {
+    return sum + (w.sets || []).reduce((sSum, s) => sSum + s.reps * s.weight_kg, 0);
   }, 0);
-  const totalSets = workouts.reduce((total, w) => total + (w.sets?.length || 0), 0);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -57,13 +178,13 @@ export const DashboardPage: React.FC = () => {
         <div className="absolute top-0 right-0 w-96 h-96 bg-brand-emerald/10 rounded-full blur-3xl pointer-events-none" />
         <div>
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-brand-emerald/10 text-brand-emerald border border-brand-emerald/20 mb-3">
-            <Flame className="w-3.5 h-3.5" /> Athlete Command Center
+            <Sparkles className="w-3.5 h-3.5" /> Athlete Command Center
           </span>
           <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
             Welcome back, <span className="text-brand-emerald">{user?.name}</span>!
           </h1>
           <p className="text-slate-400 text-sm mt-1">
-            Consistency breeds strength. Ready to log today's progress?
+            Track daily workout folders, burn calories, and break strength plateaus.
           </p>
         </div>
         <div>
@@ -77,151 +198,352 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* KPI Stats Grid */}
+      {/* KPI Stats Grid (Requirements 1 & 2 applied) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+        {/* 1. Total Workout Sessions (Distinct Gym Days Attended) */}
         <StatCard
-          title="Total Workouts"
-          value={loading ? '...' : totalWorkouts}
-          subtitle="Completed gym sessions"
+          title="Workout Sessions"
+          value={loading ? '...' : `${uniqueGymDays} Days`}
+          subtitle="Unique days you trained at the gym"
           icon={Dumbbell}
           gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
           glowClass="hover:border-brand-emerald/40"
         />
+
+        {/* 2. Total Calories Burned */}
         <StatCard
-          title="Total Volume"
-          value={loading ? '...' : `${Math.round(totalVolume).toLocaleString()} kg`}
-          subtitle="Cumulative weight moved"
-          icon={Trophy}
-          gradient="bg-gradient-to-br from-cyan-500 to-blue-600"
-          glowClass="hover:border-brand-cyan/40"
+          title="Calories Burned"
+          value={loading ? '...' : `${totalCaloriesBurned.toLocaleString()} kcal`}
+          subtitle="Total energy expended lifting"
+          icon={Flame}
+          gradient="bg-gradient-to-br from-amber-500 to-orange-600"
+          glowClass="hover:border-amber-500/40"
         />
+
+        {/* 3. Total Sets Recorded */}
         <StatCard
           title="Total Sets Recorded"
           value={loading ? '...' : totalSets}
-          subtitle="Hard sets completed"
-          icon={Flame}
+          subtitle="Hard working sets completed"
+          icon={Zap}
           gradient="bg-gradient-to-br from-purple-500 to-indigo-600"
           glowClass="hover:border-purple-500/40"
         />
       </div>
 
-      {/* Recent Workouts Feed */}
+      {/* ========================================================================= */}
+      {/* Requirement 3: Folder-Themed 7-Day Strip & Date Navigator */}
+      {/* ========================================================================= */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-brand-emerald" />
-            <span>Recent Workout Logs</span>
-          </h2>
-          <span className="text-xs text-slate-400">
-            Showing {workouts.length} recorded sessions
-          </span>
+        {/* Top Control Bar: Title + Date Navigator + Calendar Picker */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-brand-cyan/10 border border-brand-cyan/20 text-brand-cyan">
+              <Folder className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-white tracking-tight">
+                Weekly Workout Folders
+              </h2>
+              <p className="text-xs text-slate-400">
+                Click any day below to open its training folder and inspect exercises
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Previous Week */}
+            <button
+              onClick={() => shiftWindow(-7)}
+              className="p-2 rounded-xl bg-dark-800 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-colors"
+              title="Previous 7 Days"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            {/* Jump to Today button */}
+            <button
+              onClick={jumpToToday}
+              className="px-3 py-1.5 rounded-xl bg-dark-800 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white hover:border-slate-700 transition-colors"
+            >
+              Today
+            </button>
+
+            {/* Next Week */}
+            <button
+              onClick={() => shiftWindow(7)}
+              className="p-2 rounded-xl bg-dark-800 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-colors"
+              title="Next 7 Days"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            {/* Calendar Date Picker for Historical Dates */}
+            <div className="relative flex items-center">
+              <label
+                htmlFor="calendar-picker"
+                className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-dark-800 border border-brand-cyan/30 text-xs font-semibold text-brand-cyan hover:bg-brand-cyan/10 transition-colors shadow-glow-cyan"
+                title="Pick custom date from calendar"
+              >
+                <CalendarIcon className="w-4 h-4" />
+                <span>Jump to Date</span>
+              </label>
+              <input
+                id="calendar-picker"
+                type="date"
+                onChange={handleDatePick}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+              />
+            </div>
+          </div>
         </div>
 
-        {loading ? (
-          <div className="glass-card p-12 rounded-2xl text-center space-y-3">
-            <div className="w-8 h-8 border-3 border-brand-emerald/20 border-t-brand-emerald rounded-full animate-spin mx-auto" />
-            <p className="text-slate-400 text-sm">Loading your workout logs...</p>
-          </div>
-        ) : workouts.length === 0 ? (
-          <div className="glass-card p-12 rounded-2xl text-center space-y-4 border border-slate-800">
-            <div className="w-14 h-14 rounded-2xl bg-dark-800 border border-slate-700 flex items-center justify-center mx-auto text-slate-400">
-              <Dumbbell className="w-7 h-7" />
-            </div>
-            <h3 className="text-lg font-bold text-white">No workouts recorded yet</h3>
-            <p className="text-slate-400 text-sm max-w-sm mx-auto">
-              Start building your strength journey by recording your very first set today.
-            </p>
-            <Link
-              to="/log"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-brand-emerald text-dark-900 hover:bg-emerald-400 transition-colors shadow-glow-emerald"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Record First Workout</span>
-            </Link>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {workouts.map((w) => {
-              const sessionVolume = (w.sets || []).reduce(
-                (sum, s) => sum + s.reps * s.weight_kg,
-                0
-              );
+        {/* The 7-Day Folder Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
+          {sevenDays.map((day) => {
+            const isSelected = day.dateStr === selectedDate;
 
-              return (
+            return (
+              <button
+                key={day.dateStr}
+                onClick={() => setSelectedDate(day.dateStr)}
+                className={`relative text-left p-3.5 rounded-2xl transition-all duration-200 flex flex-col justify-between min-h-[110px] border ${
+                  isSelected
+                    ? 'bg-dark-800 border-brand-emerald shadow-glow-emerald ring-1 ring-brand-emerald transform -translate-y-1'
+                    : day.hasWorkouts
+                    ? 'glass-card border-slate-800 hover:border-slate-700 hover:bg-dark-800/80'
+                    : 'bg-dark-900/40 border-slate-800/50 hover:border-slate-800 opacity-70 hover:opacity-100'
+                }`}
+              >
+                {/* Day Header */}
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    {day.dayName}
+                  </span>
+                  {day.isToday && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-brand-emerald/20 text-brand-emerald">
+                      TODAY
+                    </span>
+                  )}
+                </div>
+
+                {/* Day Number */}
+                <div className="my-1">
+                  <span
+                    className={`text-base font-extrabold ${
+                      isSelected ? 'text-brand-emerald' : 'text-white'
+                    }`}
+                  >
+                    {day.dayNum}
+                  </span>
+                </div>
+
+                {/* Workout Focus Tag */}
+                <div className="w-full">
+                  {day.hasWorkouts ? (
+                    <div className="flex items-center gap-1 text-[11px] font-semibold text-brand-cyan truncate">
+                      <Flame className="w-3 h-3 shrink-0 text-brand-emerald" />
+                      <span className="truncate" title={day.focusLabel}>
+                        {day.focusLabel}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                      <Moon className="w-3 h-3 shrink-0" />
+                      <span>Rest Day</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bottom Folder Tab Accent Indicator */}
                 <div
-                  key={w.id}
-                  className="glass-card glass-card-hover rounded-2xl p-6 border border-slate-800 flex flex-col justify-between space-y-4"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="px-3 py-1 rounded-lg bg-dark-800 border border-slate-700 text-xs font-semibold text-brand-emerald">
-                          {w.workout_date}
+                  className={`absolute bottom-0 left-4 right-4 h-1 rounded-t-full transition-all ${
+                    isSelected
+                      ? 'bg-brand-emerald'
+                      : day.hasWorkouts
+                      ? 'bg-brand-cyan/40'
+                      : 'bg-transparent'
+                  }`}
+                />
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Active Folder Detailed View */}
+        <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-800 relative overflow-hidden space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-brand-emerald/10 border border-brand-emerald/30 text-brand-emerald">
+                <FolderOpen className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xl font-extrabold text-white">
+                    {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
+                      weekday: 'long',
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </h3>
+                  {selectedDate === todayStr && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-emerald/20 text-brand-emerald">
+                      Today
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {selectedDayWorkouts.length > 0
+                    ? `${selectedDayWorkouts.length} workout session(s) logged on this date`
+                    : 'No workout logged for this date'}
+                </p>
+              </div>
+            </div>
+
+            {/* Daily summary badges if workouts exist */}
+            {selectedDayWorkouts.length > 0 && (
+              <div className="flex items-center gap-3">
+                <div className="px-3.5 py-1.5 rounded-xl bg-dark-800 border border-slate-800 text-right">
+                  <span className="text-[10px] text-slate-400 font-medium uppercase block">
+                    Daily Calories
+                  </span>
+                  <span className="text-sm font-bold text-amber-400 font-mono">
+                    ~{selectedDayCalories} kcal
+                  </span>
+                </div>
+                <div className="px-3.5 py-1.5 rounded-xl bg-dark-800 border border-slate-800 text-right">
+                  <span className="text-[10px] text-slate-400 font-medium uppercase block">
+                    Daily Volume
+                  </span>
+                  <span className="text-sm font-bold text-brand-cyan font-mono">
+                    {Math.round(selectedDayVolume).toLocaleString()} kg
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Workouts Detail List for Selected Date */}
+          {selectedDayWorkouts.length === 0 ? (
+            <div className="py-12 text-center space-y-4">
+              <div className="w-14 h-14 rounded-2xl bg-dark-800 border border-slate-800 flex items-center justify-center mx-auto text-slate-500">
+                <Moon className="w-7 h-7" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-base font-bold text-white">Rest & Recovery Day</h4>
+                <p className="text-slate-400 text-xs max-w-sm mx-auto">
+                  No workout logs recorded for this day. Rest is where the muscles grow!
+                </p>
+              </div>
+              <Link
+                to={`/log?date=${selectedDate}`}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-dark-900 bg-brand-emerald hover:bg-emerald-400 transition-colors shadow-glow-emerald"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Log Workout For This Day</span>
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {selectedDayWorkouts.map((w, index) => {
+                const sessionCalories = Math.round(
+                  (w.sets || []).reduce((sum, s) => sum + s.reps * s.weight_kg, 0) * 0.08 +
+                    (w.sets?.length || 0) * 8.5
+                );
+                const sessionVolume = (w.sets || []).reduce(
+                  (sum, s) => sum + s.reps * s.weight_kg,
+                  0
+                );
+
+                return (
+                  <div
+                    key={w.id}
+                    className="p-5 rounded-2xl bg-dark-900/70 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between space-y-4"
+                  >
+                    <div className="space-y-3">
+                      {/* Card Header: Focus/Title + Delete */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-brand-cyan/10 text-brand-cyan border border-brand-cyan/20">
+                            Session #{index + 1}
+                          </span>
+                          {w.notes ? (
+                            <h4 className="text-lg font-bold text-white mt-1">"{w.notes}"</h4>
+                          ) : (
+                            <h4 className="text-base font-bold text-slate-200 mt-1">
+                              {w.sets?.[0]?.exercise_name || 'Workout Session'}
+                            </h4>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => handleDelete(w.id)}
+                          disabled={deletingId === w.id}
+                          className="p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                          title="Delete session log"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Sets Breakdown */}
+                      <div className="space-y-1.5 pt-1">
+                        {(w.sets || []).map((s, sIdx) => {
+                          const est1RM =
+                            s.reps > 0 && s.weight_kg > 0
+                              ? (s.weight_kg * (1 + s.reps / 30)).toFixed(1)
+                              : '-';
+
+                          return (
+                            <div
+                              key={sIdx}
+                              className="flex items-center justify-between text-xs py-1.5 px-3 rounded-xl bg-dark-800/70 border border-slate-800/80"
+                            >
+                              <span className="font-semibold text-slate-200 truncate max-w-[160px]">
+                                {s.exercise_name || `Exercise #${s.exercise_id}`}
+                              </span>
+                              <div className="flex items-center gap-3 text-slate-400 font-mono">
+                                <span>
+                                  Set {s.set_number}: {s.reps} reps @{' '}
+                                  <strong className="text-brand-cyan">{s.weight_kg} kg</strong>
+                                </span>
+                                <span className="text-[10px] text-slate-500 border-l border-slate-700 pl-2">
+                                  1RM: <strong className="text-brand-emerald">{est1RM}kg</strong>
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Card Footer: Metrics + Link to Analytics */}
+                    <div className="flex items-center justify-between pt-3 border-t border-slate-800/80 text-xs">
+                      <div className="flex items-center gap-3 text-slate-400">
+                        <span>
+                          Volume: <strong className="text-white font-mono">{Math.round(sessionVolume).toLocaleString()} kg</strong>
                         </span>
-                        <span className="text-xs text-slate-400">
-                          {w.sets?.length || 0} sets
+                        <span>•</span>
+                        <span className="text-amber-400 font-mono font-medium">
+                          ~{sessionCalories} kcal
                         </span>
                       </div>
-                      <button
-                        onClick={() => handleDelete(w.id)}
-                        disabled={deletingId === w.id}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                        title="Delete workout log"
+
+                      <Link
+                        to={`/analytics?exerciseId=${w.sets?.[0]?.exercise_id || 1}`}
+                        className="text-brand-emerald hover:underline flex items-center gap-1 font-semibold"
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    {w.notes && (
-                      <p className="text-sm text-slate-300 italic bg-dark-800/50 px-3 py-2 rounded-lg border border-slate-800/50">
-                        "{w.notes}"
-                      </p>
-                    )}
-
-                    {/* Sets Preview */}
-                    <div className="space-y-1.5 pt-1">
-                      {(w.sets || []).slice(0, 4).map((s, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center justify-between text-xs py-1 px-2.5 rounded-md bg-dark-900/60 border border-slate-800/60"
-                        >
-                          <span className="font-medium text-slate-200 truncate max-w-[180px]">
-                            {s.exercise_name || `Exercise #${s.exercise_id}`}
-                          </span>
-                          <span className="text-slate-400 font-mono">
-                            Set {s.set_number}: {s.reps} reps @{' '}
-                            <strong className="text-brand-cyan">{s.weight_kg} kg</strong>
-                          </span>
-                        </div>
-                      ))}
-                      {(w.sets?.length || 0) > 4 && (
-                        <p className="text-[11px] text-slate-500 text-center">
-                          +{w.sets.length - 4} more sets
-                        </p>
-                      )}
+                        <span>Analytics</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
                     </div>
                   </div>
-
-                  <div className="flex items-center justify-between pt-3 border-t border-slate-800/80 text-xs">
-                    <span className="text-slate-400">
-                      Volume:{' '}
-                      <strong className="text-white font-mono">
-                        {Math.round(sessionVolume).toLocaleString()} kg
-                      </strong>
-                    </span>
-                    <Link
-                      to={`/analytics?exerciseId=${w.sets?.[0]?.exercise_id || 1}`}
-                      className="text-brand-emerald hover:underline flex items-center gap-1 font-medium"
-                    >
-                      <span>Analytics</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
