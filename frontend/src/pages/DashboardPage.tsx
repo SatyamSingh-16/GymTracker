@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { workoutsApi } from '../api/endpoints';
@@ -26,13 +26,18 @@ export const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
+  // Calendar Modal State
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarViewDate, setCalendarViewDate] = useState(() => new Date());
+  const calendarRef = useRef<HTMLDivElement>(null);
+
   // Today string in YYYY-MM-DD
   const todayStr = useMemo(() => {
     const d = new Date();
     return d.toISOString().split('T')[0];
   }, []);
 
-  // Currently selected date to view
+  // Currently selected date
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
   // The end date of the 7-day strip window (defaults to today)
@@ -52,6 +57,19 @@ export const DashboardPage: React.FC = () => {
   useEffect(() => {
     fetchWorkouts();
   }, []);
+
+  // Close calendar popup if clicked outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (calendarRef.current && !calendarRef.current.contains(e.target as Node)) {
+        setCalendarOpen(false);
+      }
+    };
+    if (calendarOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [calendarOpen]);
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('Are you sure you want to delete this workout log?')) return;
@@ -80,11 +98,10 @@ export const DashboardPage: React.FC = () => {
     return map;
   }, [workouts]);
 
-  // Requirement 1: Total unique days the client attended the gym
+  // Total unique days client attended gym
   const uniqueGymDays = Object.keys(workoutsByDate).length;
 
-  // Requirement 2: Total calories burned estimate
-  // Exercise science formula: ~8.5 kcal per working set + 0.08 kcal per kg of volume moved
+  // Total calories burned estimate (~8.5 kcal per working set + 0.08 kcal per kg of volume moved)
   const totalCaloriesBurned = useMemo(() => {
     return Math.round(
       workouts.reduce((total, w) => {
@@ -99,19 +116,18 @@ export const DashboardPage: React.FC = () => {
     return workouts.reduce((total, w) => total + (w.sets?.length || 0), 0);
   }, [workouts]);
 
-  // Requirement 3: 7-Day sliding window calculation
+  // 7-Day sliding window calculation
   const sevenDays = useMemo(() => {
     const days = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date(windowEndDate);
       d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split('T')[0];
-      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' }); // e.g. Mon, Tue
-      const dayNum = d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' }); // e.g. 04 Sep
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+      const dayNum = d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' });
       const dayWorkouts = workoutsByDate[dateStr] || [];
       const hasWorkouts = dayWorkouts.length > 0;
 
-      // Extract a representative focus / name (e.g. from notes "Back & Bicep" or first exercise name)
       let focusLabel = 'Rest Day';
       if (hasWorkouts) {
         const notesWithText = dayWorkouts.find((w) => w.notes?.trim());
@@ -136,7 +152,6 @@ export const DashboardPage: React.FC = () => {
     return days;
   }, [windowEndDate, workoutsByDate, todayStr]);
 
-  // Shift 7-day window backwards or forwards
   const shiftWindow = (daysCount: number) => {
     setWindowEndDate((prev) => {
       const next = new Date(prev);
@@ -150,16 +165,48 @@ export const DashboardPage: React.FC = () => {
     setSelectedDate(todayStr);
   };
 
-  const handleDatePick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.value) return;
-    const pickedDateStr = e.target.value;
-    setSelectedDate(pickedDateStr);
-    // Align window so selected date is in view
-    const picked = new Date(pickedDateStr);
-    setWindowEndDate(picked);
+  // Calendar Grid calculation for Custom Modal
+  const calendarGrid = useMemo(() => {
+    const year = calendarViewDate.getFullYear();
+    const month = calendarViewDate.getMonth();
+
+    const firstDayIndex = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const cells = [];
+
+    for (let i = 0; i < firstDayIndex; i++) {
+      cells.push(null);
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const monthStr = String(month + 1).padStart(2, '0');
+      const dayStr = String(day).padStart(2, '0');
+      const dateStr = `${year}-${monthStr}-${dayStr}`;
+      const hasWorkout = Boolean(workoutsByDate[dateStr]?.length);
+      cells.push({
+        day,
+        dateStr,
+        hasWorkout,
+        isSelected: dateStr === selectedDate,
+        isToday: dateStr === todayStr,
+      });
+    }
+
+    return cells;
+  }, [calendarViewDate, workoutsByDate, selectedDate, todayStr]);
+
+  const changeCalendarMonth = (diff: number) => {
+    setCalendarViewDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + diff, 1));
   };
 
-  // Selected date workouts
+  const handleSelectDateFromCalendar = (dateStr: string) => {
+    setSelectedDate(dateStr);
+    setWindowEndDate(new Date(dateStr + 'T00:00:00'));
+    setCalendarOpen(false);
+  };
+
+  // Selected day details
   const selectedDayWorkouts = workoutsByDate[selectedDate] || [];
   const selectedDayCalories = Math.round(
     selectedDayWorkouts.reduce((sum, w) => {
@@ -184,7 +231,7 @@ export const DashboardPage: React.FC = () => {
             Welcome back, <span className="text-brand-emerald">{user?.name}</span>!
           </h1>
           <p className="text-slate-400 text-sm mt-1">
-            Track daily workout folders, burn calories, and break strength plateaus.
+            Consistency breeds strength. Ready to log today's progress?
           </p>
         </div>
         <div>
@@ -198,9 +245,8 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* KPI Stats Grid (Requirements 1 & 2 applied) */}
+      {/* KPI Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        {/* 1. Total Workout Sessions (Distinct Gym Days Attended) */}
         <StatCard
           title="Workout Sessions"
           value={loading ? '...' : `${uniqueGymDays} Days`}
@@ -209,33 +255,27 @@ export const DashboardPage: React.FC = () => {
           gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
           glowClass="hover:border-brand-emerald/40"
         />
-
-        {/* 2. Total Calories Burned */}
         <StatCard
           title="Calories Burned"
           value={loading ? '...' : `${totalCaloriesBurned.toLocaleString()} kcal`}
-          subtitle="Total energy expended lifting"
+          subtitle="Estimated resistance energy output"
           icon={Flame}
           gradient="bg-gradient-to-br from-amber-500 to-orange-600"
           glowClass="hover:border-amber-500/40"
         />
-
-        {/* 3. Total Sets Recorded */}
         <StatCard
           title="Total Sets Recorded"
           value={loading ? '...' : totalSets}
-          subtitle="Hard working sets completed"
+          subtitle="Working sets completed to date"
           icon={Zap}
           gradient="bg-gradient-to-br from-purple-500 to-indigo-600"
           glowClass="hover:border-purple-500/40"
         />
       </div>
 
-      {/* ========================================================================= */}
-      {/* Requirement 3: Folder-Themed 7-Day Strip & Date Navigator */}
-      {/* ========================================================================= */}
-      <div className="space-y-4">
-        {/* Top Control Bar: Title + Date Navigator + Calendar Picker */}
+      {/* 7-Day Folder Strip & Custom Calendar Popover */}
+      <div className="space-y-4 relative">
+        {/* Top Control Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-brand-cyan/10 border border-brand-cyan/20 text-brand-cyan">
@@ -251,8 +291,7 @@ export const DashboardPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Previous Week */}
+          <div className="flex items-center gap-2 relative">
             <button
               onClick={() => shiftWindow(-7)}
               className="p-2 rounded-xl bg-dark-800 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-colors"
@@ -261,7 +300,6 @@ export const DashboardPage: React.FC = () => {
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            {/* Jump to Today button */}
             <button
               onClick={jumpToToday}
               className="px-3 py-1.5 rounded-xl bg-dark-800 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white hover:border-slate-700 transition-colors"
@@ -269,7 +307,6 @@ export const DashboardPage: React.FC = () => {
               Today
             </button>
 
-            {/* Next Week */}
             <button
               onClick={() => shiftWindow(7)}
               className="p-2 rounded-xl bg-dark-800 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-colors"
@@ -278,22 +315,106 @@ export const DashboardPage: React.FC = () => {
               <ChevronRight className="w-4 h-4" />
             </button>
 
-            {/* Calendar Date Picker for Historical Dates */}
-            <div className="relative flex items-center">
-              <label
-                htmlFor="calendar-picker"
-                className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-dark-800 border border-brand-cyan/30 text-xs font-semibold text-brand-cyan hover:bg-brand-cyan/10 transition-colors shadow-glow-cyan"
-                title="Pick custom date from calendar"
+            {/* Jump to Date Button with Custom Interactive Calendar */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setCalendarOpen(!calendarOpen)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-colors shadow-glow-cyan ${
+                  calendarOpen
+                    ? 'bg-brand-cyan text-dark-900 border-brand-cyan font-bold'
+                    : 'bg-dark-800 border-brand-cyan/40 text-brand-cyan hover:bg-brand-cyan/10'
+                }`}
               >
                 <CalendarIcon className="w-4 h-4" />
                 <span>Jump to Date</span>
-              </label>
-              <input
-                id="calendar-picker"
-                type="date"
-                onChange={handleDatePick}
-                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-              />
+              </button>
+
+              {/* Custom Calendar Popover with Gym Attendance Fire Icons 🔥 */}
+              {calendarOpen && (
+                <div
+                  ref={calendarRef}
+                  className="absolute right-0 top-full mt-2 w-72 sm:w-80 p-4 rounded-2xl bg-dark-800/95 backdrop-blur-xl border border-slate-700 shadow-2xl z-50 space-y-3"
+                >
+                  {/* Calendar Header */}
+                  <div className="flex items-center justify-between border-b border-slate-700/80 pb-2.5">
+                    <button
+                      onClick={() => changeCalendarMonth(-1)}
+                      className="p-1 rounded-lg hover:bg-dark-700 text-slate-400 hover:text-white"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="text-sm font-bold text-white tracking-wide">
+                      {calendarViewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    </span>
+                    <button
+                      onClick={() => changeCalendarMonth(1)}
+                      className="p-1 rounded-lg hover:bg-dark-700 text-slate-400 hover:text-white"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Days of Week Header */}
+                  <div className="grid grid-cols-7 text-center text-[10px] font-semibold text-slate-400 uppercase">
+                    <span>Su</span>
+                    <span>Mo</span>
+                    <span>Tu</span>
+                    <span>We</span>
+                    <span>Th</span>
+                    <span>Fr</span>
+                    <span>Sa</span>
+                  </div>
+
+                  {/* Calendar Dates Grid with Gym Attendance Fire Icons 🔥 */}
+                  <div className="grid grid-cols-7 gap-1">
+                    {calendarGrid.map((cell, idx) => {
+                      if (!cell) {
+                        return <div key={idx} className="h-8" />;
+                      }
+
+                      return (
+                        <button
+                          key={cell.dateStr}
+                          onClick={() => handleSelectDateFromCalendar(cell.dateStr)}
+                          className={`h-8 rounded-lg text-xs font-medium relative flex flex-col items-center justify-center transition-all ${
+                            cell.isSelected
+                              ? 'bg-brand-emerald text-dark-900 font-extrabold shadow-glow-emerald'
+                              : cell.isToday
+                              ? 'border border-brand-emerald text-brand-emerald bg-dark-700'
+                              : 'hover:bg-dark-700 text-slate-200'
+                          }`}
+                        >
+                          <span>{cell.day}</span>
+                          {/* Fire Icon on Attended Gym Days 🔥 */}
+                          {cell.hasWorkout && (
+                            <span
+                              className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center text-[10px]"
+                              title="Workout completed on this day"
+                            >
+                              🔥
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Calendar Footer legend */}
+                  <div className="pt-2 border-t border-slate-700/80 flex items-center justify-between text-[11px] text-slate-400">
+                    <div className="flex items-center gap-1">
+                      <span>🔥</span>
+                      <span className="text-slate-300">= Gym Day</span>
+                    </div>
+                    <button
+                      onClick={() => setCalendarOpen(false)}
+                      className="text-brand-cyan hover:underline font-medium"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -315,7 +436,6 @@ export const DashboardPage: React.FC = () => {
                     : 'bg-dark-900/40 border-slate-800/50 hover:border-slate-800 opacity-70 hover:opacity-100'
                 }`}
               >
-                {/* Day Header */}
                 <div className="flex items-center justify-between w-full">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
                     {day.dayName}
@@ -327,7 +447,6 @@ export const DashboardPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Day Number */}
                 <div className="my-1">
                   <span
                     className={`text-base font-extrabold ${
@@ -338,11 +457,10 @@ export const DashboardPage: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Workout Focus Tag */}
                 <div className="w-full">
                   {day.hasWorkouts ? (
                     <div className="flex items-center gap-1 text-[11px] font-semibold text-brand-cyan truncate">
-                      <Flame className="w-3 h-3 shrink-0 text-brand-emerald" />
+                      <span className="text-xs shrink-0">🔥</span>
                       <span className="truncate" title={day.focusLabel}>
                         {day.focusLabel}
                       </span>
@@ -355,7 +473,6 @@ export const DashboardPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Bottom Folder Tab Accent Indicator */}
                 <div
                   className={`absolute bottom-0 left-4 right-4 h-1 rounded-t-full transition-all ${
                     isSelected
@@ -370,7 +487,7 @@ export const DashboardPage: React.FC = () => {
           })}
         </div>
 
-        {/* Active Folder Detailed View */}
+        {/* Selected Day Detailed Folder */}
         <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-800 relative overflow-hidden space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
             <div className="flex items-center gap-3">
@@ -401,7 +518,6 @@ export const DashboardPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Daily summary badges if workouts exist */}
             {selectedDayWorkouts.length > 0 && (
               <div className="flex items-center gap-3">
                 <div className="px-3.5 py-1.5 rounded-xl bg-dark-800 border border-slate-800 text-right">
@@ -424,7 +540,7 @@ export const DashboardPage: React.FC = () => {
             )}
           </div>
 
-          {/* Workouts Detail List for Selected Date */}
+          {/* Exercise Cards */}
           {selectedDayWorkouts.length === 0 ? (
             <div className="py-12 text-center space-y-4">
               <div className="w-14 h-14 rounded-2xl bg-dark-800 border border-slate-800 flex items-center justify-center mx-auto text-slate-500">
@@ -462,16 +578,16 @@ export const DashboardPage: React.FC = () => {
                     className="p-5 rounded-2xl bg-dark-900/70 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between space-y-4"
                   >
                     <div className="space-y-3">
-                      {/* Card Header: Focus/Title + Delete */}
+                      {/* Card Header: Replaced Session # with Exercise */}
                       <div className="flex items-center justify-between">
                         <div>
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-brand-cyan/10 text-brand-cyan border border-brand-cyan/20">
-                            Session #{index + 1}
+                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-brand-cyan/10 text-brand-cyan border border-brand-cyan/20">
+                            Exercise #{index + 1}
                           </span>
                           {w.notes ? (
-                            <h4 className="text-lg font-bold text-white mt-1">"{w.notes}"</h4>
+                            <h4 className="text-lg font-bold text-white mt-1.5">"{w.notes}"</h4>
                           ) : (
-                            <h4 className="text-base font-bold text-slate-200 mt-1">
+                            <h4 className="text-base font-bold text-slate-200 mt-1.5">
                               {w.sets?.[0]?.exercise_name || 'Workout Session'}
                             </h4>
                           )}
@@ -481,7 +597,7 @@ export const DashboardPage: React.FC = () => {
                           onClick={() => handleDelete(w.id)}
                           disabled={deletingId === w.id}
                           className="p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                          title="Delete session log"
+                          title="Delete workout log"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -518,7 +634,7 @@ export const DashboardPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Card Footer: Metrics + Link to Analytics */}
+                    {/* Card Footer */}
                     <div className="flex items-center justify-between pt-3 border-t border-slate-800/80 text-xs">
                       <div className="flex items-center gap-3 text-slate-400">
                         <span>

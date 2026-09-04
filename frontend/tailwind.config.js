@@ -19,6 +19,7 @@ export default {
           cyan: '#06b6d4',
           lime: '#84cc16',
           purple: '#8b5cf6',
+          amber: '#f59e0b',
         }
       },
       fontFamily: {

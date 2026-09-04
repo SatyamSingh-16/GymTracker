@@ -6,7 +6,7 @@ interface StatCardProps {
   value: string | number;
   subtitle?: string;
   icon: LucideIcon;
-  gradient: string;
+  gradient?: string;
   glowClass?: string;
 }
 
@@ -15,7 +15,7 @@ export const StatCard: React.FC<StatCardProps> = ({
   value,
   subtitle,
   icon: Icon,
-  gradient,
+  gradient = 'bg-gradient-to-br from-emerald-500 to-teal-600',
   glowClass = 'hover:border-slate-700',
 }) => {
   return (
