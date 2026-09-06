@@ -50,3 +50,19 @@ export const progressApi = {
   getForExercise: (exerciseId: number) =>
     request<ProgressDataPoint[]>(`/progress/${exerciseId}`),
 };
+
+export interface AICoachResponse {
+  reply: string;
+  source: string;
+  suggested_prompts: string[];
+  related_exercises?: string[];
+}
+
+export const aiApi = {
+  chat: (data: { message: string; history?: { role: string; content: string }[] }) =>
+    request<AICoachResponse>('/ai/coach', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+

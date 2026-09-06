@@ -53,6 +53,9 @@ func SetupRouter() *chi.Mux {
 
 		// Progress Analytics
 		r.Get("/api/progress/{exercise_id}", handlers.GetProgress)
+
+		// AI Fitness Coach
+		r.Post("/api/ai/coach", handlers.AICoachChat)
 	})
 
 	return r
