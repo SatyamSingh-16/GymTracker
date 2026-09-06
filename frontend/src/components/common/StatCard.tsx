@@ -15,23 +15,22 @@ export const StatCard: React.FC<StatCardProps> = ({
   value,
   subtitle,
   icon: Icon,
-  gradient = 'bg-gradient-to-br from-emerald-500 to-teal-600',
-  glowClass = 'hover:border-slate-700',
+  gradient = 'from-white/15 to-white/5',
 }) => {
   return (
-    <div className={`glass-card glass-card-hover rounded-2xl p-6 relative overflow-hidden transition-all duration-300 ${glowClass}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-slate-400">{title}</p>
-          <h3 className="text-3xl font-extrabold text-white mt-2 tracking-tight">{value}</h3>
+    <div className="glass-card glass-card-hover rounded-[26px] p-7 sm:p-8 relative overflow-hidden transition-all duration-300">
+      <div className="flex items-start justify-between">
+        <div className="space-y-2">
+          <p className="text-xs sm:text-sm font-semibold text-slate-400 uppercase tracking-wider">{title}</p>
+          <h3 className="text-4xl sm:text-5xl font-black text-white tracking-tight font-sans mt-1">{value}</h3>
           {subtitle && (
-            <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+            <p className="text-xs sm:text-sm text-slate-400 mt-2 flex items-center gap-1.5">
               {subtitle}
             </p>
           )}
         </div>
-        <div className={`p-3.5 rounded-xl ${gradient} text-white shadow-lg`}>
-          <Icon className="w-6 h-6" />
+        <div className={`p-4 rounded-2xl bg-gradient-to-br ${gradient} border border-white/15 text-white shadow-xl backdrop-blur-md`}>
+          <Icon className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
         </div>
       </div>
     </div>
