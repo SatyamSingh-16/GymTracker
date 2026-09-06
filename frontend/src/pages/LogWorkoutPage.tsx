@@ -102,30 +102,30 @@ export const LogWorkoutPage: React.FC = () => {
     }
   };
 
-  // Quick total volume calculation
   const currentVolume = sets.reduce((sum, s) => sum + s.reps * s.weight_kg, 0);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-[1440px] mx-auto px-6 sm:px-10 lg:px-12 py-10 sm:py-14 space-y-10">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-brand-emerald/10 border border-brand-emerald/30 text-brand-emerald">
-              <Dumbbell className="w-6 h-6" />
-            </div>
-            <span>Log Workout Session</span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 glass-card p-8 sm:p-10 rounded-[32px] border border-white/10">
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold bg-white/[0.08] text-slate-300 border border-white/15">
+            <Dumbbell className="w-4 h-4 text-white" />
+            <span>Interactive Workout Logger</span>
+          </div>
+          <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight">
+            Log Workout Session
           </h1>
-          <p className="text-slate-400 text-sm mt-1">
+          <p className="text-slate-400 text-sm sm:text-base">
             Record exercises, reps, and weights to calculate your estimated 1RM and progress.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="px-4 py-2 rounded-xl bg-dark-800 border border-slate-800 text-right">
-            <p className="text-[11px] text-slate-400 font-medium uppercase tracking-wider">
+        <div className="shrink-0">
+          <div className="px-6 py-3 rounded-2xl bg-white/[0.05] border border-white/10 text-right backdrop-blur-md">
+            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
               Session Volume
             </p>
-            <p className="text-lg font-extrabold text-brand-emerald font-mono">
+            <p className="text-2xl font-black text-white font-mono mt-0.5">
               {Math.round(currentVolume).toLocaleString()} kg
             </p>
           </div>
@@ -133,7 +133,7 @@ export const LogWorkoutPage: React.FC = () => {
       </div>
 
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+        <div className="flex items-center gap-3 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm backdrop-blur-md">
           <AlertCircle className="w-5 h-5 shrink-0" />
           <span>{error}</span>
         </div>
@@ -141,10 +141,10 @@ export const LogWorkoutPage: React.FC = () => {
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Session Metadata Card */}
-        <div className="glass-card p-6 rounded-2xl border border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <div className="glass-card p-8 sm:p-10 rounded-[28px] border border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1 flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-brand-cyan" />
+            <label className="block text-sm font-semibold text-slate-300 mb-2 flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-white" />
               <span>Workout Date</span>
             </label>
             <input
@@ -152,46 +152,46 @@ export const LogWorkoutPage: React.FC = () => {
               required
               value={workoutDate}
               onChange={(e) => setWorkoutDate(e.target.value)}
-              className="w-full px-4 py-2.5 bg-dark-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-brand-emerald text-sm"
+              className="w-full px-5 py-3.5 glass-input rounded-2xl text-white text-sm"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-brand-cyan" />
-              <span>Session Notes (Optional)</span>
+            <label className="block text-sm font-semibold text-slate-300 mb-2 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-white" />
+              <span>Session Notes (e.g. "Chest & Triceps", "Heavy Leg Day")</span>
             </label>
             <input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Chest focus, felt explosive on 3rd set"
-              className="w-full px-4 py-2.5 bg-dark-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-emerald text-sm"
+              placeholder="e.g. Felt explosive on bench press"
+              className="w-full px-5 py-3.5 glass-input rounded-2xl text-white placeholder-slate-500 text-sm"
             />
           </div>
         </div>
 
         {/* Dynamic Sets Manager */}
-        <div className="space-y-4">
+        <div className="space-y-5">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
               <span>Sets & Reps</span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-brand-emerald/10 text-brand-emerald border border-brand-emerald/20 font-mono">
+              <span className="text-xs px-3 py-1 rounded-full bg-white/10 text-white border border-white/15 font-mono">
                 {sets.length} total
               </span>
             </h2>
             <button
               type="button"
               onClick={addSet}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-dark-900 bg-brand-emerald hover:bg-emerald-400 transition-colors shadow-glow-emerald"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs sm:text-sm font-bold text-black !text-black bg-white hover:bg-slate-200 transition-all shadow-pill-white btn-white"
             >
-              <Plus className="w-4 h-4" />
-              <span>Add Next Set</span>
+              <Plus className="w-4 h-4 text-black !text-black" />
+              <span className="text-black !text-black font-bold">Add Next Set</span>
             </button>
           </div>
 
           {/* Sets Rows */}
-          <div className="space-y-3">
+          <div className="space-y-3.5">
             {sets.map((set, idx) => {
               const estimated1RM =
                 set.reps > 0 && set.weight_kg > 0
@@ -201,25 +201,25 @@ export const LogWorkoutPage: React.FC = () => {
               return (
                 <div
                   key={idx}
-                  className="glass-card p-4 rounded-2xl border border-slate-800/80 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all hover:border-slate-700"
+                  className="glass-card p-5 sm:p-6 rounded-[24px] border border-white/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 transition-all hover:border-white/20"
                 >
-                  <div className="flex items-center gap-3 w-full md:w-auto">
-                    <span className="w-8 h-8 rounded-lg bg-dark-800 border border-slate-700 flex items-center justify-center font-mono font-bold text-xs text-brand-emerald shrink-0">
+                  <div className="flex items-center gap-4 w-full md:w-auto">
+                    <span className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/15 flex items-center justify-center font-mono font-bold text-sm text-white shrink-0 shadow-sm">
                       #{idx + 1}
                     </span>
 
                     {/* Exercise Select */}
-                    <div className="flex-1 md:w-64">
+                    <div className="flex-1 md:w-72">
                       <select
                         value={set.exercise_id}
                         onChange={(e) =>
                           updateSet(idx, 'exercise_id', parseInt(e.target.value, 10))
                         }
                         disabled={loadingExercises}
-                        className="w-full px-3 py-2 bg-dark-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-emerald"
+                        className="w-full px-4 py-3 glass-input rounded-2xl text-white text-sm"
                       >
                         {exercises.map((ex) => (
-                          <option key={ex.id} value={ex.id}>
+                          <option key={ex.id} value={ex.id} className="bg-dark-900 text-white">
                             {ex.name} ({ex.category})
                           </option>
                         ))}
@@ -228,9 +228,9 @@ export const LogWorkoutPage: React.FC = () => {
                   </div>
 
                   {/* Reps & Weight Inputs */}
-                  <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-slate-400 font-medium">Reps</label>
+                  <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                    <div className="flex items-center gap-2.5">
+                      <label className="text-xs sm:text-sm text-slate-400 font-semibold uppercase tracking-wider">Reps</label>
                       <input
                         type="number"
                         min={1}
@@ -240,12 +240,12 @@ export const LogWorkoutPage: React.FC = () => {
                         onChange={(e) =>
                           updateSet(idx, 'reps', Math.max(1, parseInt(e.target.value, 10) || 0))
                         }
-                        className="w-20 px-3 py-2 bg-dark-800 border border-slate-700 rounded-xl text-white text-center font-mono text-sm focus:outline-none focus:ring-2 focus:ring-brand-emerald"
+                        className="w-24 px-3 py-2.5 glass-input rounded-2xl text-white text-center font-mono text-sm sm:text-base font-bold"
                       />
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-slate-400 font-medium">kg</label>
+                    <div className="flex items-center gap-2.5">
+                      <label className="text-xs sm:text-sm text-slate-400 font-semibold uppercase tracking-wider">kg</label>
                       <input
                         type="number"
                         step="0.5"
@@ -256,19 +256,19 @@ export const LogWorkoutPage: React.FC = () => {
                         onChange={(e) =>
                           updateSet(idx, 'weight_kg', Math.max(0, parseFloat(e.target.value) || 0))
                         }
-                        className="w-24 px-3 py-2 bg-dark-800 border border-slate-700 rounded-xl text-white text-center font-mono text-sm focus:outline-none focus:ring-2 focus:ring-brand-emerald"
+                        className="w-28 px-3 py-2.5 glass-input rounded-2xl text-white text-center font-mono text-sm sm:text-base font-bold"
                       />
                     </div>
 
                     {/* Live 1RM Badge */}
                     <div
-                      className="hidden sm:flex flex-col items-center px-3 py-1.5 rounded-lg bg-dark-800/80 border border-slate-800 min-w-[80px]"
+                      className="hidden sm:flex flex-col items-center px-4 py-2 rounded-2xl bg-white/[0.05] border border-white/10 min-w-[95px]"
                       title="Estimated 1-Rep Max via Epley formula: Weight * (1 + Reps/30)"
                     >
-                      <span className="text-[10px] text-slate-500 font-semibold uppercase flex items-center gap-0.5">
-                        <Zap className="w-2.5 h-2.5 text-brand-cyan" /> 1RM
+                      <span className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">
+                        <Zap className="w-3 h-3 text-white" /> 1RM
                       </span>
-                      <span className="text-xs font-bold text-brand-cyan font-mono">
+                      <span className="text-sm font-extrabold text-white font-mono mt-0.5">
                         {estimated1RM} kg
                       </span>
                     </div>
@@ -277,10 +277,10 @@ export const LogWorkoutPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => removeSet(idx)}
-                      className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                      className="p-2.5 text-slate-400 hover:text-red-400 hover:bg-white/10 rounded-full transition-colors"
                       title="Remove set"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-5 h-5" />
                     </button>
                   </div>
                 </div>
@@ -288,37 +288,37 @@ export const LogWorkoutPage: React.FC = () => {
             })}
           </div>
 
-          {/* Add Set Button at bottom */}
+          {/* Add Set Button */}
           <button
             type="button"
             onClick={addSet}
-            className="w-full py-3 border-2 border-dashed border-slate-800 hover:border-brand-emerald/40 rounded-2xl text-slate-400 hover:text-brand-emerald flex items-center justify-center gap-2 text-sm font-semibold transition-all hover:bg-brand-emerald/5"
+            className="w-full py-4 border-2 border-dashed border-white/15 hover:border-white/30 rounded-[24px] text-slate-300 hover:text-white flex items-center justify-center gap-2 text-sm sm:text-base font-semibold transition-all hover:bg-white/[0.03]"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-5 h-5" />
             <span>Add Another Set</span>
           </button>
         </div>
 
         {/* Submit Actions */}
-        <div className="flex items-center justify-end gap-4 pt-4 border-t border-slate-800">
+        <div className="flex items-center justify-end gap-5 pt-6 border-t border-white/10">
           <button
             type="button"
             onClick={() => navigate('/')}
-            className="px-5 py-3 rounded-xl text-sm font-medium text-slate-400 hover:text-white transition-colors"
+            className="px-6 py-3.5 rounded-full text-sm font-semibold text-slate-400 hover:text-white transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={submitting}
-            className="flex items-center gap-2 px-8 py-3.5 rounded-xl font-bold text-dark-900 bg-brand-emerald hover:bg-emerald-400 transition-all shadow-glow-emerald disabled:opacity-50"
+            className="flex items-center gap-2.5 px-9 py-4 rounded-full font-bold text-base text-black !text-black bg-white hover:bg-slate-200 transition-all shadow-pill-white disabled:opacity-50 btn-white"
           >
             {submitting ? (
-              <div className="w-5 h-5 border-2 border-dark-900 border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
             ) : (
               <>
-                <CheckCircle className="w-5 h-5" />
-                <span>Save Workout</span>
+                <CheckCircle className="w-5 h-5 text-black !text-black" />
+                <span className="text-black !text-black font-bold">Save Workout</span>
               </>
             )}
           </button>
