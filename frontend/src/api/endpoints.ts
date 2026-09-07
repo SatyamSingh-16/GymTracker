@@ -44,6 +44,11 @@ export const workoutsApi = {
     request<{ message: string }>(`/workouts/${id}`, {
       method: 'DELETE',
     }),
+
+  deleteSet: (id: number) =>
+    request<{ message: string }>(`/workouts/sets/${id}`, {
+      method: 'DELETE',
+    }),
 };
 
 export const progressApi = {

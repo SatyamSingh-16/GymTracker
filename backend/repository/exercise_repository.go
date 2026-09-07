@@ -14,7 +14,7 @@ var ErrExerciseNotFound = errors.New("exercise not found")
 // GetAllExercises fetches all cataloged exercises from PostgreSQL ordered by category and name
 func GetAllExercises() ([]models.Exercise, error) {
 	query := `
-		SELECT id, name, category, equipment
+		SELECT id, name, category, equipment, COALESCE(is_time_based, FALSE)
 		FROM exercises
 		ORDER BY category, name;
 	`
@@ -28,7 +28,7 @@ func GetAllExercises() ([]models.Exercise, error) {
 	exercises := []models.Exercise{}
 	for rows.Next() {
 		var ex models.Exercise
-		if err := rows.Scan(&ex.ID, &ex.Name, &ex.Category, &ex.Equipment); err != nil {
+		if err := rows.Scan(&ex.ID, &ex.Name, &ex.Category, &ex.Equipment, &ex.IsTimeBased); err != nil {
 			return nil, fmt.Errorf("failed scanning exercise row: %w", err)
 		}
 		exercises = append(exercises, ex)
@@ -44,13 +44,13 @@ func GetAllExercises() ([]models.Exercise, error) {
 // GetExerciseByID fetches a single exercise catalog record by its ID
 func GetExerciseByID(id int) (*models.Exercise, error) {
 	query := `
-		SELECT id, name, category, equipment
+		SELECT id, name, category, equipment, COALESCE(is_time_based, FALSE)
 		FROM exercises
 		WHERE id = $1;
 	`
 
 	var ex models.Exercise
-	err := db.DB.QueryRow(query, id).Scan(&ex.ID, &ex.Name, &ex.Category, &ex.Equipment)
+	err := db.DB.QueryRow(query, id).Scan(&ex.ID, &ex.Name, &ex.Category, &ex.Equipment, &ex.IsTimeBased)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrExerciseNotFound

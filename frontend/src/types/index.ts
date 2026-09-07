@@ -15,6 +15,7 @@ export interface Exercise {
   name: string;
   category: string;
   equipment: string;
+  is_time_based?: boolean;
 }
 
 export interface WorkoutSet {
@@ -31,6 +32,7 @@ export interface WorkoutLog {
   id: number;
   user_id: number;
   workout_date: string;
+  workout_type?: string;
   notes: string;
   created_at: string;
   sets: WorkoutSet[];
@@ -38,6 +40,7 @@ export interface WorkoutLog {
 
 export interface CreateWorkoutPayload {
   workout_date: string;
+  workout_type?: string;
   notes: string;
   sets: {
     exercise_id: number;

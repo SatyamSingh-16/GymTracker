@@ -132,3 +132,33 @@ func DeleteWorkout(w http.ResponseWriter, r *http.Request) {
 		"message": "Workout deleted successfully",
 	})
 }
+
+// DeleteWorkoutSet deletes an individual workout set by ID
+func DeleteWorkoutSet(w http.ResponseWriter, r *http.Request) {
+	userID, ok := customMiddleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		utils.Error(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	setID, err := strconv.Atoi(idStr)
+	if err != nil || setID <= 0 {
+		utils.Error(w, http.StatusBadRequest, "Invalid set ID parameter")
+		return
+	}
+
+	err = repository.DeleteWorkoutSet(setID, userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrWorkoutNotFound) {
+			utils.Error(w, http.StatusNotFound, "Set not found or unauthorized")
+			return
+		}
+		utils.Error(w, http.StatusInternalServerError, "Failed to delete workout set")
+		return
+	}
+
+	utils.JSON(w, http.StatusOK, map[string]string{
+		"message": "Workout set deleted successfully",
+	})
+}

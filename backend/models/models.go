@@ -13,10 +13,11 @@ type User struct {
 
 // Exercise represents a cataloged exercise
 type Exercise struct {
-	ID        int    `json:"id"`
-	Name      string `json:"name"`
-	Category  string `json:"category"`
-	Equipment string `json:"equipment"`
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Category    string `json:"category"`
+	Equipment   string `json:"equipment"`
+	IsTimeBased bool   `json:"is_time_based"`
 }
 
 // WorkoutSet represents an individual set within a logged workout session
@@ -35,6 +36,7 @@ type WorkoutLog struct {
 	ID          int          `json:"id"`
 	UserID      int          `json:"user_id"`
 	WorkoutDate string       `json:"workout_date"`
+	WorkoutType string       `json:"workout_type"`
 	Notes       string       `json:"notes"`
 	CreatedAt   time.Time    `json:"created_at"`
 	Sets        []WorkoutSet `json:"sets,omitempty"`

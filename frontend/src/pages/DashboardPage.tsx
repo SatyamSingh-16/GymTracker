@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { workoutsApi } from '../api/endpoints';
-import type { WorkoutLog } from '../types';
+import type { WorkoutLog, WorkoutSet } from '../types';
 import { StatCard } from '../components/common/StatCard';
 import {
   PlusCircle,
@@ -18,13 +18,33 @@ import {
   Moon,
   Sparkles,
   Zap,
+  Timer,
+  Layers,
 } from 'lucide-react';
+
+interface ExerciseGroup {
+  exerciseId: number;
+  exerciseName: string;
+  isTimeBased: boolean;
+  sets: WorkoutSet[];
+  totalVolume: number;
+  bestMetric: string;
+}
+
+interface WorkoutCategoryGroup {
+  type: string;
+  workoutIds: number[];
+  notesList: string[];
+  exercises: ExerciseGroup[];
+  totalVolume: number;
+  totalCalories: number;
+  totalSets: number;
+}
 
 export const DashboardPage: React.FC = () => {
   const { user } = useAuth();
   const [workouts, setWorkouts] = useState<WorkoutLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   // Calendar Modal State
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -71,18 +91,33 @@ export const DashboardPage: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [calendarOpen]);
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this workout log?')) return;
+  const [deletingSetId, setDeletingSetId] = useState<number | null>(null);
 
-    setDeletingId(id);
+  const handleDeleteSet = async (setId?: number, workoutLogId?: number) => {
+    if (!setId) return;
+    if (!window.confirm('Are you sure you want to delete this set?')) return;
+
+    setDeletingSetId(setId);
     try {
-      await workoutsApi.delete(id);
-      setWorkouts((prev) => prev.filter((w) => w.id !== id));
+      await workoutsApi.deleteSet(setId);
+      setWorkouts((prev) =>
+        prev
+          .map((w) => {
+            if (w.id === workoutLogId || (w.sets || []).some((s) => s.id === setId)) {
+              return {
+                ...w,
+                sets: (w.sets || []).filter((s) => s.id !== setId),
+              };
+            }
+            return w;
+          })
+          .filter((w) => (w.sets || []).length > 0)
+      );
     } catch (err) {
-      console.error('Failed to delete workout:', err);
-      alert('Failed to delete workout. Please try again.');
+      console.error('Failed to delete set:', err);
+      alert('Failed to delete set. Please try again.');
     } finally {
-      setDeletingId(null);
+      setDeletingSetId(null);
     }
   };
 
@@ -105,7 +140,10 @@ export const DashboardPage: React.FC = () => {
   const totalCaloriesBurned = useMemo(() => {
     return Math.round(
       workouts.reduce((total, w) => {
-        const wVol = (w.sets || []).reduce((sum, s) => sum + s.reps * s.weight_kg, 0);
+        const wVol = (w.sets || []).reduce((sum, s) => {
+          const isTime = s.exercise_name?.toLowerCase().includes('plank');
+          return isTime ? sum + (s.weight_kg > 0 ? s.weight_kg : 0) : sum + s.reps * s.weight_kg;
+        }, 0);
         const wSets = w.sets?.length || 0;
         return total + (wSets * 8.5 + wVol * 0.08);
       }, 0)
@@ -130,12 +168,17 @@ export const DashboardPage: React.FC = () => {
 
       let focusLabel = 'Rest Day';
       if (hasWorkouts) {
-        const notesWithText = dayWorkouts.find((w) => w.notes?.trim());
-        if (notesWithText && notesWithText.notes.trim()) {
-          focusLabel = notesWithText.notes.trim();
+        const typeWithText = dayWorkouts.find((w) => w.workout_type && w.workout_type !== 'General');
+        if (typeWithText && typeWithText.workout_type) {
+          focusLabel = typeWithText.workout_type;
         } else {
-          const firstEx = dayWorkouts[0]?.sets?.[0]?.exercise_name;
-          focusLabel = firstEx ? `${firstEx}` : 'Workout Logged';
+          const notesWithText = dayWorkouts.find((w) => w.notes?.trim());
+          if (notesWithText && notesWithText.notes.trim()) {
+            focusLabel = notesWithText.notes.trim();
+          } else {
+            const firstEx = dayWorkouts[0]?.sets?.[0]?.exercise_name;
+            focusLabel = firstEx ? `${firstEx}` : 'Workout Logged';
+          }
         }
       }
 
@@ -206,21 +249,102 @@ export const DashboardPage: React.FC = () => {
     setCalendarOpen(false);
   };
 
-  // Selected day details
+  // Selected day raw workouts
   const selectedDayWorkouts = workoutsByDate[selectedDate] || [];
+
+  // Group selected day workouts hierarchically: Category / Workout Type -> Nested Exercise Cards
+  const groupedDayWorkouts = useMemo(() => {
+    const categoryMap: Record<string, WorkoutCategoryGroup> = {};
+
+    for (const w of selectedDayWorkouts) {
+      let type = w.workout_type?.trim();
+      if (!type || type === 'General') {
+        if (w.notes?.trim()) {
+          type = w.notes.trim();
+        } else if (w.sets?.[0]?.exercise_name) {
+          type = w.sets[0].exercise_name;
+        } else {
+          type = 'Workout Session';
+        }
+      }
+
+      if (!categoryMap[type]) {
+        categoryMap[type] = {
+          type,
+          workoutIds: [],
+          notesList: [],
+          exercises: [],
+          totalVolume: 0,
+          totalCalories: 0,
+          totalSets: 0,
+        };
+      }
+
+      const group = categoryMap[type];
+      if (!group.workoutIds.includes(w.id)) {
+        group.workoutIds.push(w.id);
+      }
+
+      if (w.notes?.trim() && !group.notesList.includes(w.notes.trim()) && w.notes.trim() !== type) {
+        group.notesList.push(w.notes.trim());
+      }
+
+      for (const s of w.sets || []) {
+        group.totalSets += 1;
+        const isTime = s.exercise_name?.toLowerCase().includes('plank');
+        const setVolume = isTime ? (s.weight_kg > 0 ? s.weight_kg : 0) : s.reps * s.weight_kg;
+        group.totalVolume += setVolume;
+
+        let exGroup = group.exercises.find((e) => e.exerciseId === s.exercise_id);
+        if (!exGroup) {
+          exGroup = {
+            exerciseId: s.exercise_id,
+            exerciseName: s.exercise_name || `Exercise #${s.exercise_id}`,
+            isTimeBased: Boolean(isTime),
+            sets: [],
+            totalVolume: 0,
+            bestMetric: '-',
+          };
+          group.exercises.push(exGroup);
+        }
+
+        exGroup.sets.push(s);
+        exGroup.totalVolume += setVolume;
+      }
+    }
+
+    return Object.values(categoryMap).map((grp) => {
+      grp.totalCalories = Math.round(grp.totalSets * 8.5 + grp.totalVolume * 0.08);
+
+      for (const ex of grp.exercises) {
+        if (ex.isTimeBased) {
+          const maxHold = Math.max(...ex.sets.map((s) => s.reps), 0);
+          ex.bestMetric = maxHold >= 60 ? `${Math.floor(maxHold / 60)}m ${maxHold % 60}s` : `${maxHold}s`;
+        } else {
+          const max1RM = Math.max(
+            ...ex.sets.map((s) => (s.reps > 0 && s.weight_kg > 0 ? s.weight_kg * (1 + s.reps / 30) : 0)),
+            0
+          );
+          ex.bestMetric = max1RM > 0 ? `${max1RM.toFixed(1)} kg` : '-';
+        }
+      }
+
+      return grp;
+    });
+  }, [selectedDayWorkouts]);
+
   const selectedDayCalories = Math.round(
-    selectedDayWorkouts.reduce((sum, w) => {
-      const vol = (w.sets || []).reduce((sSum, s) => sSum + s.reps * s.weight_kg, 0);
-      return sum + (w.sets?.length || 0) * 8.5 + vol * 0.08;
-    }, 0)
+    groupedDayWorkouts.reduce((sum, g) => sum + g.totalCalories, 0)
   );
-  const selectedDayVolume = selectedDayWorkouts.reduce((sum, w) => {
-    return sum + (w.sets || []).reduce((sSum, s) => sSum + s.reps * s.weight_kg, 0);
-  }, 0);
+
+  const selectedDayVolume = groupedDayWorkouts.reduce(
+    (sum, g) => sum + g.totalVolume,
+    0
+  );
 
   return (
     <div className="max-w-[1440px] mx-auto px-6 sm:px-10 lg:px-12 py-10 sm:py-14 space-y-10">
-      {/* Header Banner (Expanded scale & frosted glass like Image 1) */}
+      {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 glass-card p-8 sm:p-12 rounded-[32px] border border-white/10">
         <div className="space-y-2">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold bg-white/[0.08] text-slate-300 border border-white/15 backdrop-blur-md">
@@ -245,7 +369,7 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* KPI Stats Grid (More spacious scale) */}
+      {/* KPI Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8">
         <StatCard
           title="Workout Sessions"
@@ -396,28 +520,14 @@ export const DashboardPage: React.FC = () => {
                       );
                     })}
                   </div>
-
-                  {/* Calendar Footer legend */}
-                  <div className="pt-3 border-t border-white/10 flex items-center justify-between text-xs text-slate-400">
-                    <div className="flex items-center gap-1.5">
-                      <span>🔥</span>
-                      <span className="text-slate-300 font-medium">= Gym Day</span>
-                    </div>
-                    <button
-                      onClick={() => setCalendarOpen(false)}
-                      className="text-white hover:underline font-semibold"
-                    >
-                      Close
-                    </button>
-                  </div>
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* The 7-Day Folder Strip (Spacious Pill Cards) */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 sm:gap-4">
+        {/* 7-Day Sliding Window Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3.5">
           {sevenDays.map((day) => {
             const isSelected = day.dateStr === selectedDate;
 
@@ -425,26 +535,24 @@ export const DashboardPage: React.FC = () => {
               <button
                 key={day.dateStr}
                 onClick={() => setSelectedDate(day.dateStr)}
-                className={`relative text-left p-4 sm:p-5 rounded-[22px] transition-all duration-200 flex flex-col justify-between min-h-[125px] border cursor-pointer group select-none ${
+                className={`group relative p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between min-h-[115px] ${
                   isSelected
-                    ? 'glass-card border-white/50 bg-white/[0.14] shadow-glass-hover transform -translate-y-1.5 hover:border-white/80 hover:bg-white/[0.22] hover:shadow-2xl ring-1 ring-white/30'
+                    ? 'bg-white/[0.12] border-white/40 shadow-lg scale-[1.02]'
                     : day.hasWorkouts
-                    ? 'glass-card border-white/15 bg-white/[0.04] hover:border-white/40 hover:bg-white/[0.09] hover:-translate-y-1 hover:shadow-lg'
-                    : 'bg-white/[0.02] border-white/[0.06] hover:border-white/25 hover:bg-white/[0.07] opacity-75 hover:opacity-100 hover:-translate-y-1 hover:shadow-md'
-                } ${day.isToday ? 'ring-1 ring-white/25' : ''}`}
+                    ? 'bg-white/[0.04] border-white/15 hover:bg-white/[0.07] hover:border-white/25'
+                    : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.04] hover:border-white/10 opacity-70 hover:opacity-90'
+                }`}
               >
                 <div className="flex items-center justify-between w-full">
-                  <span className={`text-xs font-bold uppercase tracking-wider transition-colors ${
-                    isSelected ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
-                  }`}>
+                  <span
+                    className={`text-xs font-bold uppercase tracking-wider ${
+                      isSelected ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                    }`}
+                  >
                     {day.dayName}
                   </span>
                   {day.isToday && (
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border transition-all ${
-                      isSelected
-                        ? 'bg-white text-black !text-black border-white shadow-sm'
-                        : 'bg-white/20 text-white border-white/30 group-hover:bg-white/30 group-hover:border-white/50'
-                    }`}>
+                    <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/30">
                       TODAY
                     </span>
                   )}
@@ -486,7 +594,7 @@ export const DashboardPage: React.FC = () => {
           })}
         </div>
 
-        {/* Selected Day Detailed Folder (Expanded scale & frosted card) */}
+        {/* Selected Day Detailed Folder */}
         <div className="glass-card rounded-[32px] p-8 sm:p-12 border border-white/10 space-y-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 pb-6 border-b border-white/10">
             <div className="flex items-center gap-4">
@@ -510,14 +618,14 @@ export const DashboardPage: React.FC = () => {
                   )}
                 </div>
                 <p className="text-sm text-slate-400 mt-1">
-                  {selectedDayWorkouts.length > 0
-                    ? `${selectedDayWorkouts.length} workout session(s) logged on this date`
+                  {groupedDayWorkouts.length > 0
+                    ? `${groupedDayWorkouts.length} workout category group(s) logged on this date`
                     : 'No workout logged for this date'}
                 </p>
               </div>
             </div>
 
-            {selectedDayWorkouts.length > 0 && (
+            {groupedDayWorkouts.length > 0 && (
               <div className="flex items-center gap-3.5">
                 <div className="px-4 py-2 rounded-2xl bg-white/[0.05] border border-white/10 text-right">
                   <span className="text-[11px] text-slate-400 font-semibold uppercase block">
@@ -539,8 +647,8 @@ export const DashboardPage: React.FC = () => {
             )}
           </div>
 
-          {/* Exercise Cards */}
-          {selectedDayWorkouts.length === 0 ? (
+          {/* Hierarchical Workout Category & Nested Exercise Cards */}
+          {groupedDayWorkouts.length === 0 ? (
             <div className="py-14 text-center space-y-4">
               <div className="w-16 h-16 rounded-3xl bg-white/[0.04] border border-white/10 flex items-center justify-center mx-auto text-slate-400 shadow-lg">
                 <Moon className="w-8 h-8" />
@@ -560,102 +668,155 @@ export const DashboardPage: React.FC = () => {
               </Link>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {selectedDayWorkouts.map((w, index) => {
-                const sessionCalories = Math.round(
-                  (w.sets || []).reduce((sum, s) => sum + s.reps * s.weight_kg, 0) * 0.08 +
-                    (w.sets?.length || 0) * 8.5
-                );
-                const sessionVolume = (w.sets || []).reduce(
-                  (sum, s) => sum + s.reps * s.weight_kg,
-                  0
-                );
-
-                return (
-                  <div
-                    key={w.id}
-                    className="p-6 sm:p-7 rounded-[24px] bg-white/[0.03] border border-white/10 hover:border-white/20 transition-all flex flex-col justify-between space-y-5"
-                  >
-                    <div className="space-y-4">
-                      {/* Card Header */}
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-xs font-semibold px-3 py-1 rounded-full bg-white/10 text-white border border-white/15 uppercase tracking-wider">
-                            Exercise #{index + 1}
-                          </span>
-                          {w.notes ? (
-                            <h4 className="text-xl font-bold text-white mt-2">"{w.notes}"</h4>
-                          ) : (
-                            <h4 className="text-lg font-bold text-slate-200 mt-2">
-                              {w.sets?.[0]?.exercise_name || 'Workout Session'}
-                            </h4>
-                          )}
-                        </div>
-
-                        <button
-                          onClick={() => handleDelete(w.id)}
-                          disabled={deletingId === w.id}
-                          className="p-2.5 rounded-full text-slate-400 hover:text-red-400 hover:bg-white/10 transition-colors"
-                          title="Delete workout log"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
+            <div className="space-y-8">
+              {groupedDayWorkouts.map((group, groupIdx) => (
+                <div
+                  key={`${group.type}-${groupIdx}`}
+                  className="p-7 sm:p-9 rounded-[32px] bg-white/[0.025] border border-white/10 hover:border-white/20 transition-all space-y-6"
+                >
+                  {/* Outer Card Header: Workout Type / Muscle Split */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-white/10">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-black px-3.5 py-1.5 rounded-full bg-white/15 text-white border border-white/20 uppercase tracking-wider flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5 text-white" />
+                          <span>{group.type}</span>
+                        </span>
+                        <span className="text-xs text-slate-400 font-mono">
+                          {group.exercises.length} {group.exercises.length === 1 ? 'Exercise' : 'Exercises'} • {group.totalSets} Sets
+                        </span>
                       </div>
-
-                      {/* Sets Breakdown */}
-                      <div className="space-y-2 pt-1">
-                        {(w.sets || []).map((s, sIdx) => {
-                          const est1RM =
-                            s.reps > 0 && s.weight_kg > 0
-                              ? (s.weight_kg * (1 + s.reps / 30)).toFixed(1)
-                              : '-';
-
-                          return (
-                            <div
-                              key={sIdx}
-                              className="flex items-center justify-between text-sm py-2.5 px-4 rounded-2xl bg-white/[0.04] border border-white/[0.07]"
-                            >
-                              <span className="font-semibold text-slate-100 truncate max-w-[180px]">
-                                {s.exercise_name || `Exercise #${s.exercise_id}`}
-                              </span>
-                              <div className="flex items-center gap-4 text-slate-400 font-mono text-xs sm:text-sm">
-                                <span>
-                                  Set {s.set_number}: {s.reps} reps @{' '}
-                                  <strong className="text-white font-bold">{s.weight_kg} kg</strong>
-                                </span>
-                                <span className="text-xs text-slate-400 border-l border-white/15 pl-3">
-                                  1RM: <strong className="text-white">{est1RM}kg</strong>
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      {group.notesList.length > 0 && (
+                        <p className="text-xs sm:text-sm text-slate-300 italic">
+                          "{group.notesList.join(' • ')}"
+                        </p>
+                      )}
                     </div>
 
-                    {/* Card Footer */}
-                    <div className="flex items-center justify-between pt-4 border-t border-white/10 text-sm">
-                      <div className="flex items-center gap-3 text-slate-400 text-xs sm:text-sm">
-                        <span>
-                          Volume: <strong className="text-white font-mono">{Math.round(sessionVolume).toLocaleString()} kg</strong>
-                        </span>
-                        <span>•</span>
-                        <span className="text-amber-300 font-mono font-semibold">
-                          ~{sessionCalories} kcal
-                        </span>
+                    {/* Group Metrics & Delete Actions */}
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="px-3.5 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-right">
+                          <span className="text-[10px] text-slate-400 uppercase font-semibold block">Volume</span>
+                          <span className="text-xs sm:text-sm font-bold text-white font-mono">
+                            {Math.round(group.totalVolume).toLocaleString()} kg
+                          </span>
+                        </div>
+                        <div className="px-3.5 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-right">
+                          <span className="text-[10px] text-slate-400 uppercase font-semibold block">Calories</span>
+                          <span className="text-xs sm:text-sm font-bold text-amber-300 font-mono">
+                            ~{group.totalCalories} kcal
+                          </span>
+                        </div>
                       </div>
-
-                      <Link
-                        to={`/analytics?exerciseId=${w.sets?.[0]?.exercise_id || 1}`}
-                        className="text-white hover:text-slate-300 flex items-center gap-1.5 font-semibold text-xs sm:text-sm transition-colors"
-                      >
-                        <span>Analytics</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </Link>
                     </div>
                   </div>
-                );
-              })}
+
+                  {/* Inner Nested Cards: One per specific exercise */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    {group.exercises.map((ex) => (
+                      <div
+                        key={ex.exerciseId}
+                        className="p-5 sm:p-6 rounded-[24px] bg-white/[0.03] border border-white/10 hover:border-white/20 transition-all flex flex-col justify-between space-y-4 shadow-sm"
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h5 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                              <Dumbbell className="w-4 h-4 text-white" />
+                              <span>{ex.exerciseName}</span>
+                            </h5>
+                            <span className="text-xs px-2.5 py-1 rounded-full bg-white/[0.06] text-slate-300 border border-white/10 font-mono">
+                              {ex.sets.length} {ex.sets.length === 1 ? 'set' : 'sets'}
+                            </span>
+                          </div>
+
+                          {/* Sets list */}
+                          <div className="space-y-2">
+                            {ex.sets.map((s, sIdx) => {
+                              const est1RM =
+                                !ex.isTimeBased && s.reps > 0 && s.weight_kg > 0
+                                  ? (s.weight_kg * (1 + s.reps / 30)).toFixed(1)
+                                  : '-';
+
+                              return (
+                                <div
+                                  key={sIdx}
+                                  className="flex items-center justify-between text-xs sm:text-sm py-2 px-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:border-white/15 transition-all group/set"
+                                >
+                                  <span className="font-mono text-slate-400 font-medium">
+                                    Set {sIdx + 1}
+                                  </span>
+
+                                  <div className="flex items-center gap-3 font-mono">
+                                    {ex.isTimeBased ? (
+                                      <span className="text-amber-300 font-semibold flex items-center gap-1.5">
+                                        <Timer className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                                        <span>
+                                          {s.reps >= 60
+                                            ? `${Math.floor(s.reps / 60)}m ${s.reps % 60}s hold`
+                                            : `${s.reps} sec hold`}
+                                        </span>
+                                        {s.weight_kg > 0 && (
+                                          <span className="text-slate-400 font-normal"> (+{s.weight_kg}kg)</span>
+                                        )}
+                                      </span>
+                                    ) : (
+                                      <span>
+                                        <strong className="text-white font-bold">{s.reps}</strong> reps @{' '}
+                                        <strong className="text-white font-bold">{s.weight_kg} kg</strong>
+                                      </span>
+                                    )}
+
+                                    {!ex.isTimeBased && (
+                                      <span className="text-[11px] text-slate-400 border-l border-white/15 pl-2.5">
+                                        1RM: <strong className="text-white">{est1RM}kg</strong>
+                                      </span>
+                                    )}
+
+                                    {/* Delete single set button */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteSet(s.id, s.workout_log_id)}
+                                      disabled={deletingSetId === s.id}
+                                      className="p-1 rounded-lg text-slate-500 hover:text-red-400 hover:bg-white/10 transition-colors ml-1 opacity-70 hover:opacity-100"
+                                      title="Delete this set"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Card Footer */}
+                        <div className="flex items-center justify-between pt-3 border-t border-white/10 text-xs">
+                          <div className="text-slate-400">
+                            {ex.isTimeBased ? (
+                              <span>
+                                Best Hold: <strong className="text-amber-300 font-mono">{ex.bestMetric}</strong>
+                              </span>
+                            ) : (
+                              <span>
+                                Best 1RM: <strong className="text-white font-mono">{ex.bestMetric}</strong>
+                              </span>
+                            )}
+                          </div>
+
+                          <Link
+                            to={`/analytics?exerciseId=${ex.exerciseId}`}
+                            className="text-white hover:text-slate-300 flex items-center gap-1 font-semibold transition-colors"
+                          >
+                            <span>Analytics</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

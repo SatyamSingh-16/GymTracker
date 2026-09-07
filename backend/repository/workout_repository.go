@@ -23,19 +23,25 @@ func CreateWorkout(userID int, req dto.CreateWorkoutRequest) (*models.WorkoutLog
 	}
 	defer tx.Rollback()
 
+	workoutType := req.WorkoutType
+	if workoutType == "" {
+		workoutType = "General"
+	}
+
 	// 1. Insert header into workout_logs
 	logQuery := `
-		INSERT INTO workout_logs (user_id, workout_date, notes)
-		VALUES ($1, $2, $3)
+		INSERT INTO workout_logs (user_id, workout_date, workout_type, notes)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id, created_at;
 	`
 
 	var workout models.WorkoutLog
 	workout.UserID = userID
 	workout.WorkoutDate = req.WorkoutDate
+	workout.WorkoutType = workoutType
 	workout.Notes = req.Notes
 
-	err = tx.QueryRow(logQuery, userID, req.WorkoutDate, req.Notes).Scan(&workout.ID, &workout.CreatedAt)
+	err = tx.QueryRow(logQuery, userID, req.WorkoutDate, workoutType, req.Notes).Scan(&workout.ID, &workout.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed inserting workout log header: %w", err)
 	}
@@ -83,7 +89,7 @@ func CreateWorkout(userID int, req dto.CreateWorkoutRequest) (*models.WorkoutLog
 func GetUserWorkouts(userID int) ([]models.WorkoutLog, error) {
 	query := `
 		SELECT 
-			w.id, w.user_id, TO_CHAR(w.workout_date, 'YYYY-MM-DD'), COALESCE(w.notes, ''), w.created_at,
+			w.id, w.user_id, TO_CHAR(w.workout_date, 'YYYY-MM-DD'), COALESCE(w.workout_type, 'General'), COALESCE(w.notes, ''), w.created_at,
 			s.id, s.exercise_id, e.name, s.set_number, s.reps, s.weight_kg
 		FROM workout_logs w
 		LEFT JOIN workout_sets s ON w.id = s.workout_log_id
@@ -104,7 +110,7 @@ func GetUserWorkouts(userID int) ([]models.WorkoutLog, error) {
 	for rows.Next() {
 		var (
 			wID, uID                           int
-			wDate, notes                       string
+			wDate, wType, notes                string
 			wCreatedAt                         sql.NullTime
 			sID, exID, setNum, reps            sql.NullInt64
 			exName                             sql.NullString
@@ -112,7 +118,7 @@ func GetUserWorkouts(userID int) ([]models.WorkoutLog, error) {
 		)
 
 		err := rows.Scan(
-			&wID, &uID, &wDate, &notes, &wCreatedAt,
+			&wID, &uID, &wDate, &wType, &notes, &wCreatedAt,
 			&sID, &exID, &exName, &setNum, &reps, &weightKG,
 		)
 		if err != nil {
@@ -125,6 +131,7 @@ func GetUserWorkouts(userID int) ([]models.WorkoutLog, error) {
 				ID:          wID,
 				UserID:      uID,
 				WorkoutDate: wDate,
+				WorkoutType: wType,
 				Notes:       notes,
 				CreatedAt:   wCreatedAt.Time,
 				Sets:        []models.WorkoutSet{},
@@ -189,6 +196,38 @@ func DeleteWorkout(workoutID, userID int) error {
 
 	if rowsAffected == 0 {
 		return ErrWorkoutNotFound
+	}
+
+	return nil
+}
+
+// DeleteWorkoutSet removes an individual workout set and cleans up empty parent logs
+func DeleteWorkoutSet(setID, userID int) error {
+	var workoutLogID int
+	checkQuery := `
+		SELECT s.workout_log_id
+		FROM workout_sets s
+		JOIN workout_logs w ON s.workout_log_id = w.id
+		WHERE s.id = $1 AND w.user_id = $2;
+	`
+	err := db.DB.QueryRow(checkQuery, setID, userID).Scan(&workoutLogID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrWorkoutNotFound
+		}
+		return fmt.Errorf("failed verifying set ownership: %w", err)
+	}
+
+	deleteSetQuery := `DELETE FROM workout_sets WHERE id = $1;`
+	if _, err := db.DB.Exec(deleteSetQuery, setID); err != nil {
+		return fmt.Errorf("failed deleting set: %w", err)
+	}
+
+	// If no sets remain in that parent workout log, remove the empty workout log
+	var remainingCount int
+	countQuery := `SELECT COUNT(*) FROM workout_sets WHERE workout_log_id = $1;`
+	if err := db.DB.QueryRow(countQuery, workoutLogID).Scan(&remainingCount); err == nil && remainingCount == 0 {
+		_, _ = db.DB.Exec(`DELETE FROM workout_logs WHERE id = $1;`, workoutLogID)
 	}
 
 	return nil

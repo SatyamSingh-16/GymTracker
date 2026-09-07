@@ -24,6 +24,7 @@ type AuthResponse struct {
 // CreateWorkoutRequest holds payload for logging a new workout session
 type CreateWorkoutRequest struct {
 	WorkoutDate string              `json:"workout_date"`
+	WorkoutType string              `json:"workout_type"`
 	Notes       string              `json:"notes"`
 	Sets        []models.WorkoutSet `json:"sets"`
 }

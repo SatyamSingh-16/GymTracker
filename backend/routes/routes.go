@@ -50,6 +50,7 @@ func SetupRouter() *chi.Mux {
 		r.Get("/api/workouts", handlers.GetUserWorkouts)
 		r.Get("/api/workouts/{id}", handlers.GetWorkoutByID)
 		r.Delete("/api/workouts/{id}", handlers.DeleteWorkout)
+		r.Delete("/api/workouts/sets/{id}", handlers.DeleteWorkoutSet)
 
 		// Progress Analytics
 		r.Get("/api/progress/{exercise_id}", handlers.GetProgress)
