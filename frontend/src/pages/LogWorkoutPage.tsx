@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { exercisesApi, workoutsApi } from '../api/endpoints';
 import type { Exercise } from '../types';
@@ -13,6 +13,7 @@ import {
   Zap,
   Timer,
   Layers,
+  Filter,
 } from 'lucide-react';
 
 interface SetInput {
@@ -38,6 +39,50 @@ const PRESET_WORKOUT_TYPES = [
   'Custom',
 ];
 
+const getMatchingExercises = (type: string, all: Exercise[]): Exercise[] => {
+  const t = type.toLowerCase();
+  return all.filter((ex) => {
+    const cat = ex.category.toLowerCase();
+    const name = ex.name.toLowerCase();
+
+    if (t === 'back') return cat === 'back';
+    if (t === 'chest') return cat === 'chest';
+    if (t === 'legs' || t === 'legs day') return cat === 'legs';
+    if (t === 'shoulders') return cat === 'shoulders';
+    if (t === 'arms') return cat === 'arms';
+    if (t === 'core') return cat === 'core';
+    if (t === 'back & biceps') {
+      return cat === 'back' || (cat === 'arms' && (name.includes('curl') || name.includes('bicep')));
+    }
+    if (t === 'chest & triceps') {
+      return (
+        cat === 'chest' ||
+        (cat === 'arms' &&
+          (name.includes('tricep') ||
+            name.includes('dip') ||
+            name.includes('skull') ||
+            name.includes('press')))
+      );
+    }
+    if (t === 'push day') {
+      return (
+        cat === 'chest' ||
+        cat === 'shoulders' ||
+        (cat === 'arms' &&
+          (name.includes('tricep') ||
+            name.includes('dip') ||
+            name.includes('skull') ||
+            name.includes('press')))
+      );
+    }
+    if (t === 'pull day') {
+      return cat === 'back' || (cat === 'arms' && (name.includes('curl') || name.includes('bicep')));
+    }
+
+    return cat.includes(t) || t.includes(cat);
+  });
+};
+
 export const LogWorkoutPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -50,6 +95,7 @@ export const LogWorkoutPage: React.FC = () => {
   const [workoutDate, setWorkoutDate] = useState(() => dateParam || new Date().toISOString().split('T')[0]);
   const [workoutType, setWorkoutType] = useState('Back');
   const [customWorkoutType, setCustomWorkoutType] = useState('');
+  const [showAllExercises, setShowAllExercises] = useState(false);
   const [notes, setNotes] = useState('');
   const [sets, setSets] = useState<SetInput[]>([
     { exercise_id: 1, set_number: 1, reps: 10, weight_kg: 60 },
@@ -63,8 +109,18 @@ export const LogWorkoutPage: React.FC = () => {
       try {
         const data = await exercisesApi.getAll();
         setExercises(data || []);
-        if (data && data.length > 0 && sets[0].exercise_id === 1 && !data.find((e) => e.id === 1)) {
-          setSets([{ exercise_id: data[0].id, set_number: 1, reps: 10, weight_kg: 60 }]);
+        if (data && data.length > 0) {
+          const initialMatches = getMatchingExercises('Back', data);
+          const initialEx = initialMatches[0] || data[0];
+          const isTime = initialEx.is_time_based || initialEx.name.toLowerCase().includes('plank');
+          setSets([
+            {
+              exercise_id: initialEx.id,
+              set_number: 1,
+              reps: isTime ? 60 : 10,
+              weight_kg: isTime ? 0 : 60,
+            },
+          ]);
         }
       } catch (err) {
         console.error('Failed to load exercises:', err);
@@ -76,9 +132,47 @@ export const LogWorkoutPage: React.FC = () => {
     fetchCatalog();
   }, []);
 
+  // Filter exercises based on selected split
+  const filteredExercises = useMemo(() => {
+    if (showAllExercises || workoutType === 'Full Body' || workoutType === 'Custom') {
+      return exercises;
+    }
+    const matches = getMatchingExercises(workoutType, exercises);
+    return matches.length > 0 ? matches : exercises;
+  }, [exercises, workoutType, showAllExercises]);
+
+  const handleWorkoutTypeSelect = (newType: string) => {
+    setWorkoutType(newType);
+    setShowAllExercises(false);
+
+    if (newType !== 'Full Body' && newType !== 'Custom') {
+      const matches = getMatchingExercises(newType, exercises);
+      if (matches.length > 0) {
+        const firstMatch = matches[0];
+        const isTime = firstMatch.is_time_based || firstMatch.name.toLowerCase().includes('plank');
+
+        setSets((prev) =>
+          prev.map((s, idx) => {
+            const matchesCurrent = matches.some((m) => m.id === s.exercise_id);
+            if (!matchesCurrent && idx === 0) {
+              return {
+                ...s,
+                exercise_id: firstMatch.id,
+                reps: isTime ? 60 : 10,
+                weight_kg: isTime ? 0 : 60,
+              };
+            }
+            return s;
+          })
+        );
+      }
+    }
+  };
+
   const addSet = () => {
     const lastSet = sets[sets.length - 1];
-    const targetExId = lastSet ? lastSet.exercise_id : (exercises[0]?.id || 1);
+    const fallbackId = filteredExercises[0]?.id || exercises[0]?.id || 1;
+    const targetExId = lastSet ? lastSet.exercise_id : fallbackId;
     const ex = exercises.find((e) => e.id === targetExId);
     const isTime = ex?.is_time_based || ex?.name.toLowerCase().includes('plank');
 
@@ -208,8 +302,8 @@ export const LogWorkoutPage: React.FC = () => {
               <Layers className="w-4 h-4 text-white" />
               <span>Target Muscle / Workout Split</span>
             </label>
-            <span className="text-xs text-slate-400">
-              Exercises will be organized under this category on your dashboard
+            <span className="text-xs text-slate-400 hidden sm:inline">
+              Dropdown will automatically show matching exercises
             </span>
           </div>
 
@@ -221,7 +315,7 @@ export const LogWorkoutPage: React.FC = () => {
                 <button
                   key={type}
                   type="button"
-                  onClick={() => setWorkoutType(type)}
+                  onClick={() => handleWorkoutTypeSelect(type)}
                   className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all ${
                     isSelected
                       ? 'bg-white text-black !text-black font-bold shadow-pill-white scale-105 btn-white'
@@ -281,17 +375,36 @@ export const LogWorkoutPage: React.FC = () => {
 
         {/* Dynamic Sets Manager */}
         <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-              <span>Sets & Reps</span>
-              <span className="text-xs px-3 py-1 rounded-full bg-white/10 text-white border border-white/15 font-mono">
-                {sets.length} total
-              </span>
-            </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                <span>Sets & Reps</span>
+                <span className="text-xs px-3 py-1 rounded-full bg-white/10 text-white border border-white/15 font-mono">
+                  {sets.length} total
+                </span>
+              </h2>
+
+              {workoutType !== 'Full Body' && workoutType !== 'Custom' && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllExercises(!showAllExercises)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white/[0.06] text-slate-300 hover:text-white hover:bg-white/10 border border-white/10 transition-colors"
+                  title="Toggle between split-specific exercises and full library"
+                >
+                  <Filter className="w-3 h-3 text-amber-300" />
+                  <span>
+                    {showAllExercises
+                      ? `Showing All (${exercises.length})`
+                      : `${workoutType} (${filteredExercises.length})`}
+                  </span>
+                </button>
+              )}
+            </div>
+
             <button
               type="button"
               onClick={addSet}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs sm:text-sm font-bold text-black !text-black bg-white hover:bg-slate-200 transition-all shadow-pill-white btn-white"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs sm:text-sm font-bold text-black !text-black bg-white hover:bg-slate-200 transition-all shadow-pill-white btn-white self-start sm:self-auto"
             >
               <Plus className="w-4 h-4 text-black !text-black" />
               <span className="text-black !text-black font-bold">Add Next Set</span>
@@ -326,21 +439,30 @@ export const LogWorkoutPage: React.FC = () => {
                       #{idx + 1}
                     </span>
 
-                    {/* Exercise Select */}
+                    {/* Filtered Exercise Select */}
                     <div className="flex-1 md:w-72">
                       <select
                         value={set.exercise_id}
-                        onChange={(e) =>
-                          updateExercise(idx, parseInt(e.target.value, 10))
-                        }
+                        onChange={(e) => {
+                          if (e.target.value === '__ALL__') {
+                            setShowAllExercises(true);
+                            return;
+                          }
+                          updateExercise(idx, parseInt(e.target.value, 10));
+                        }}
                         disabled={loadingExercises}
                         className="w-full px-4 py-3 glass-input rounded-2xl text-white text-sm"
                       >
-                        {exercises.map((ex) => (
+                        {filteredExercises.map((ex) => (
                           <option key={ex.id} value={ex.id} className="bg-dark-900 text-white">
                             {ex.name} ({ex.category})
                           </option>
                         ))}
+                        {!showAllExercises && workoutType !== 'Full Body' && workoutType !== 'Custom' && (
+                          <option value="__ALL__" className="bg-dark-900 text-amber-300 font-bold">
+                            🔍 Show all {exercises.length} exercises...
+                          </option>
+                        )}
                       </select>
                     </div>
                   </div>
@@ -385,7 +507,7 @@ export const LogWorkoutPage: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Weight Input (or extra weight for plank) */}
+                    {/* Weight Input */}
                     <div className="flex items-center gap-2.5">
                       <label className="text-xs sm:text-sm text-slate-400 font-semibold uppercase tracking-wider">
                         {isTimeBased ? '+kg (opt)' : 'kg'}
