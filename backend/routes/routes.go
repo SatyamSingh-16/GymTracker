@@ -34,6 +34,9 @@ func SetupRouter() *chi.Mux {
 	r.Get("/api/exercises", handlers.GetAllExercises)
 	r.Get("/api/exercises/{id}", handlers.GetExerciseByID)
 
+	// Analytics & 1RM Calculations (Powered by internal gRPC microservice)
+	r.Post("/api/analytics/1rm", handlers.Calculate1RMHandler)
+
 	// Authentication Endpoints (Public)
 	r.Post("/api/auth/register", handlers.Register)
 	r.Post("/api/auth/login", handlers.Login)
