@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package analytics;
+
+option go_package = "gymtracker-backend/proto/analytics;analyticspb";
+
+// AnalyticsService defines the gRPC interface for heavy fitness computations
+service AnalyticsService {
+  // Calculate1RM estimates One-Rep Max and optimal training zones
+  rpc Calculate1RM (OneRMRequest) returns (OneRMResponse);
+
+  // CalculateVolumeLoad calculates total tonnage and intensity index
+  rpc CalculateVolumeLoad (VolumeRequest) returns (VolumeResponse);
+}
+
+// Request to calculate 1RM
+message OneRMRequest {
+  double weight_kg = 1;
+  int32 reps = 2;
+}
+
+// Training weight recommendations based on percentage of 1RM
+message TrainingZones {
+  double heavy_strength_90 = 1;  // 90% of 1RM (1-3 reps strength)
+  double hypertrophy_75 = 2;     // 75% of 1RM (8-12 reps muscle growth)
+  double endurance_60 = 3;       // 60% of 1RM (15+ reps endurance)
+}
+
+// Response containing multiple 1RM formulas and training zones
+message OneRMResponse {
+  double epley_1rm = 1;
+  double brzycki_1rm = 2;
+  double lombardi_1rm = 3;
+  double average_1rm = 4;
+  TrainingZones training_zones = 5;
+}
+
+// Single set data for volume calculation
+message SetData {
+  double weight_kg = 1;
+  int32 reps = 2;
+}
+
+// Request to calculate volume load for multiple sets
+message VolumeRequest {
+  repeated SetData sets = 1;
+}
+
+// Response with volume metrics
+message VolumeResponse {
+  double total_volume_kg = 1;
+  int32 total_reps = 2;
+  double average_intensity_kg = 3;
+}
