@@ -25,14 +25,34 @@ export const ExercisesPage: React.FC = () => {
     fetchExercises();
   }, []);
 
-  const categories = [
+  // Category filters: All, compound splits (Push, Pull), and single muscle groups
+  const categoryFilters = [
     'All',
-    ...Array.from(new Set(exercises.map((e) => e.category))).filter(Boolean),
+    'Push',
+    'Pull',
+    'Chest',
+    'Back',
+    'Biceps',
+    'Triceps',
+    'Shoulders',
+    'Legs',
+    'Core',
   ];
 
   const filtered = exercises.filter((ex) => {
     const matchesSearch = ex.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'All' || ex.category === selectedCategory;
+    
+    let matchesCategory = true;
+    if (selectedCategory === 'All') {
+      matchesCategory = true;
+    } else if (selectedCategory === 'Push') {
+      matchesCategory = ['chest', 'shoulders', 'triceps'].includes(ex.category.toLowerCase());
+    } else if (selectedCategory === 'Pull') {
+      matchesCategory = ['back', 'biceps'].includes(ex.category.toLowerCase());
+    } else {
+      matchesCategory = ex.category.toLowerCase() === selectedCategory.toLowerCase();
+    }
+
     return matchesSearch && matchesCategory;
   });
 
@@ -46,8 +66,12 @@ export const ExercisesPage: React.FC = () => {
         return 'bg-purple-500/10 text-purple-300 border-purple-500/20';
       case 'shoulders':
         return 'bg-amber-500/10 text-amber-300 border-amber-500/20';
-      case 'arms':
-        return 'bg-pink-500/10 text-pink-300 border-pink-500/20';
+      case 'biceps':
+        return 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20';
+      case 'triceps':
+        return 'bg-rose-500/10 text-rose-300 border-rose-500/20';
+      case 'core':
+        return 'bg-teal-500/10 text-teal-300 border-teal-500/20';
       default:
         return 'bg-white/10 text-slate-300 border-white/15';
     }
@@ -87,7 +111,7 @@ export const ExercisesPage: React.FC = () => {
 
       {/* Category Pills */}
       <div className="flex items-center gap-2.5 overflow-x-auto pb-2 scrollbar-none">
-        {categories.map((cat) => (
+        {categoryFilters.map((cat) => (
           <button
             key={cat}
             onClick={() => setSelectedCategory(cat)}

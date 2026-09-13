@@ -28,6 +28,8 @@ const PRESET_WORKOUT_TYPES = [
   'Chest',
   'Legs',
   'Shoulders',
+  'Biceps',
+  'Triceps',
   'Arms',
   'Back & Biceps',
   'Chest & Triceps',
@@ -49,14 +51,17 @@ const getMatchingExercises = (type: string, all: Exercise[]): Exercise[] => {
     if (t === 'chest') return cat === 'chest';
     if (t === 'legs' || t === 'legs day') return cat === 'legs';
     if (t === 'shoulders') return cat === 'shoulders';
-    if (t === 'arms') return cat === 'arms';
+    if (t === 'biceps') return cat === 'biceps' || (cat === 'arms' && (name.includes('curl') || name.includes('bicep')));
+    if (t === 'triceps') return cat === 'triceps' || (cat === 'arms' && (name.includes('tricep') || name.includes('skull') || name.includes('dip')));
+    if (t === 'arms') return cat === 'arms' || cat === 'biceps' || cat === 'triceps';
     if (t === 'core') return cat === 'core';
     if (t === 'back & biceps') {
-      return cat === 'back' || (cat === 'arms' && (name.includes('curl') || name.includes('bicep')));
+      return cat === 'back' || cat === 'biceps' || (cat === 'arms' && (name.includes('curl') || name.includes('bicep')));
     }
     if (t === 'chest & triceps') {
       return (
         cat === 'chest' ||
+        cat === 'triceps' ||
         (cat === 'arms' &&
           (name.includes('tricep') ||
             name.includes('dip') ||
@@ -68,6 +73,7 @@ const getMatchingExercises = (type: string, all: Exercise[]): Exercise[] => {
       return (
         cat === 'chest' ||
         cat === 'shoulders' ||
+        cat === 'triceps' ||
         (cat === 'arms' &&
           (name.includes('tricep') ||
             name.includes('dip') ||
@@ -76,11 +82,37 @@ const getMatchingExercises = (type: string, all: Exercise[]): Exercise[] => {
       );
     }
     if (t === 'pull day') {
-      return cat === 'back' || (cat === 'arms' && (name.includes('curl') || name.includes('bicep')));
+      return cat === 'back' || cat === 'biceps' || (cat === 'arms' && (name.includes('curl') || name.includes('bicep')));
     }
 
     return cat.includes(t) || t.includes(cat);
   });
+};
+
+// Helper to display bracket label consistent with selected workout split
+const getOptionBracketLabel = (exCategory: string, currentSplit: string): string => {
+  const splitLower = currentSplit.toLowerCase();
+  const catLower = exCategory.toLowerCase();
+
+  if (splitLower === 'arms' && (catLower === 'biceps' || catLower === 'triceps' || catLower === 'arms')) {
+    return 'Arms';
+  }
+  if (splitLower === 'back & biceps') {
+    return 'Back & Biceps';
+  }
+  if (splitLower === 'chest & triceps') {
+    return 'Chest & Triceps';
+  }
+  if (splitLower === 'push day') {
+    return 'Push Day';
+  }
+  if (splitLower === 'pull day') {
+    return 'Pull Day';
+  }
+  if (splitLower === 'legs day') {
+    return 'Legs';
+  }
+  return exCategory;
 };
 
 export const LogWorkoutPage: React.FC = () => {
@@ -153,8 +185,7 @@ export const LogWorkoutPage: React.FC = () => {
 
         setSets((prev) =>
           prev.map((s, idx) => {
-            const matchesCurrent = matches.some((m) => m.id === s.exercise_id);
-            if (!matchesCurrent && idx === 0) {
+            if (idx === 0) {
               return {
                 ...s,
                 exercise_id: firstMatch.id,
@@ -455,7 +486,7 @@ export const LogWorkoutPage: React.FC = () => {
                       >
                         {filteredExercises.map((ex) => (
                           <option key={ex.id} value={ex.id} className="bg-dark-900 text-white">
-                            {ex.name} ({ex.category})
+                            {ex.name} ({getOptionBracketLabel(ex.category, workoutType)})
                           </option>
                         ))}
                         {!showAllExercises && workoutType !== 'Full Body' && workoutType !== 'Custom' && (

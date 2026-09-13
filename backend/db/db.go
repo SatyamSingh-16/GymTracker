@@ -77,6 +77,8 @@ func createTables() error {
 		`ALTER TABLE workout_logs ADD COLUMN IF NOT EXISTS workout_type VARCHAR(100) DEFAULT 'General';`,
 		`ALTER TABLE exercises ADD COLUMN IF NOT EXISTS is_time_based BOOLEAN DEFAULT FALSE;`,
 		`UPDATE exercises SET is_time_based = TRUE WHERE LOWER(name) LIKE '%plank%';`,
+		`UPDATE exercises SET category = 'Biceps' WHERE (LOWER(name) LIKE '%curl%') AND category = 'Arms';`,
+		`UPDATE exercises SET category = 'Triceps' WHERE (LOWER(name) LIKE '%tricep%' OR LOWER(name) LIKE '%skull%' OR LOWER(name) LIKE '%close-grip%' OR LOWER(name) LIKE '%dips%') AND category = 'Arms';`,
 	}
 
 	for _, query := range queries {
@@ -141,17 +143,25 @@ func seedExercises() {
 		{"Barbell Upright Row", "Shoulders", "Barbell", false},
 		{"Barbell Shrug", "Shoulders", "Barbell", false},
 
-		// Arms
-		{"Barbell Bicep Curl", "Arms", "Barbell", false},
-		{"Dumbbell Hammer Curl", "Arms", "Dumbbell", false},
-		{"Incline Dumbbell Curl", "Arms", "Dumbbell", false},
-		{"Preacher Curl (EZ-Bar)", "Arms", "Barbell", false},
-		{"Tricep Rope Pushdown", "Arms", "Cable", false},
-		{"Skull Crusher", "Arms", "Barbell", false},
-		{"Overhead Dumbbell Tricep Extension", "Arms", "Dumbbell", false},
-		{"Dips (Triceps Focus)", "Arms", "Bodyweight", false},
-		{"Close-Grip Bench Press", "Arms", "Barbell", false},
-		{"Wrist Curls (Forearms)", "Arms", "Dumbbell", false},
+		// Biceps
+		{"Barbell Bicep Curl", "Biceps", "Barbell", false},
+		{"Dumbbell Hammer Curl", "Biceps", "Dumbbell", false},
+		{"Incline Dumbbell Curl", "Biceps", "Dumbbell", false},
+		{"Preacher Curl (EZ-Bar)", "Biceps", "Barbell", false},
+		{"Cable Bicep Curl", "Biceps", "Cable", false},
+		{"Concentration Curl", "Biceps", "Dumbbell", false},
+		{"Spider Curl", "Biceps", "Dumbbell", false},
+
+		// Triceps
+		{"Tricep Rope Pushdown", "Triceps", "Cable", false},
+		{"Skull Crusher", "Triceps", "Barbell", false},
+		{"Overhead Dumbbell Tricep Extension", "Triceps", "Dumbbell", false},
+		{"Dips (Triceps Focus)", "Triceps", "Bodyweight", false},
+		{"Close-Grip Bench Press", "Triceps", "Barbell", false},
+		{"Cable Overhead Tricep Extension", "Triceps", "Cable", false},
+		{"Diamond Push-Up", "Triceps", "Bodyweight", false},
+		{"Bench Dips", "Triceps", "Bodyweight", false},
+		{"Single-Arm Cable Tricep Kickback", "Triceps", "Cable", false},
 
 		// Core
 		{"Plank", "Core", "Bodyweight", true},

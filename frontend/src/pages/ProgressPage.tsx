@@ -14,6 +14,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { TrendingUp, Trophy, Dumbbell, BarChart3, PlusCircle } from 'lucide-react';
+import { OneRMCalculator } from '../components/OneRMCalculator';
 
 export const ProgressPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -64,6 +65,51 @@ export const ProgressPage: React.FC = () => {
     setSearchParams({ exerciseId: newId.toString() });
   };
 
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+
+  const categoryOptions = [
+    'All',
+    'Push',
+    'Pull',
+    'Chest',
+    'Back',
+    'Biceps',
+    'Triceps',
+    'Shoulders',
+    'Legs',
+    'Core',
+  ];
+
+  // Filter exercises based on selected category or split
+  const filteredExercises = exercises.filter((ex) => {
+    if (selectedCategory === 'All') return true;
+    if (selectedCategory === 'Push') {
+      return ['chest', 'shoulders', 'triceps'].includes(ex.category.toLowerCase());
+    }
+    if (selectedCategory === 'Pull') {
+      return ['back', 'biceps'].includes(ex.category.toLowerCase());
+    }
+    return ex.category.toLowerCase() === selectedCategory.toLowerCase();
+  });
+
+  const handleCategoryChange = (newCat: string) => {
+    setSelectedCategory(newCat);
+
+    let matches = exercises;
+    if (newCat === 'Push') {
+      matches = exercises.filter((e) => ['chest', 'shoulders', 'triceps'].includes(e.category.toLowerCase()));
+    } else if (newCat === 'Pull') {
+      matches = exercises.filter((e) => ['back', 'biceps'].includes(e.category.toLowerCase()));
+    } else if (newCat !== 'All') {
+      matches = exercises.filter((e) => e.category.toLowerCase() === newCat.toLowerCase());
+    }
+
+    // Auto-select first matching exercise if current is not in group
+    if (matches.length > 0 && !matches.some((e) => e.id === selectedId)) {
+      handleExerciseChange(matches[0].id);
+    }
+  };
+
   const currentExercise = exercises.find((e) => e.id === selectedId);
 
   const peak1RM = progressData.length > 0
@@ -93,22 +139,48 @@ export const ProgressPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Dropdown to switch exercise */}
-        <div className="w-full md:w-80">
-          <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Select Movement
-          </label>
-          <select
-            value={selectedId}
-            onChange={(e) => handleExerciseChange(parseInt(e.target.value, 10))}
-            className="w-full px-5 py-3.5 glass-input rounded-2xl text-white text-sm focus:outline-none"
-          >
-            {exercises.map((ex) => (
-              <option key={ex.id} value={ex.id} className="bg-dark-900 text-white">
-                {ex.name} ({ex.category})
-              </option>
-            ))}
-          </select>
+        {/* Two-Tier Exercise Selector */}
+        <div className="w-full md:w-[420px] flex flex-col sm:flex-row gap-3">
+          {/* Step 1: Muscle / Split Category */}
+          <div className="w-full sm:w-44">
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+              Muscle / Split
+            </label>
+            <select
+              value={selectedCategory}
+              onChange={(e) => handleCategoryChange(e.target.value)}
+              className="w-full px-4 py-3.5 glass-input rounded-2xl text-white text-sm focus:outline-none"
+            >
+              {categoryOptions.map((cat) => (
+                <option key={cat} value={cat} className="bg-dark-900 text-white">
+                  {cat === 'All' ? 'All Categories' : cat}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Step 2: Filtered Movement Dropdown */}
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Movement
+              </label>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-slate-300 font-mono">
+                {filteredExercises.length}
+              </span>
+            </div>
+            <select
+              value={selectedId}
+              onChange={(e) => handleExerciseChange(parseInt(e.target.value, 10))}
+              className="w-full px-4 py-3.5 glass-input rounded-2xl text-white text-sm focus:outline-none"
+            >
+              {filteredExercises.map((ex) => (
+                <option key={ex.id} value={ex.id} className="bg-dark-900 text-white">
+                  {ex.name} ({ex.category})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -167,6 +239,9 @@ export const ProgressPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Live gRPC 1RM & Strength Zones Calculator */}
+      <OneRMCalculator />
 
       {/* Analytics Charts */}
       {loading ? (

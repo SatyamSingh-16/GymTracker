@@ -71,3 +71,23 @@ export const aiApi = {
     }),
 };
 
+export interface OneRMResult {
+  average_1rm: number;
+  epley_1rm: number;
+  brzycki_1rm: number;
+  lombardi_1rm: number;
+  training_zones: {
+    heavy_strength_90: number;
+    hypertrophy_75: number;
+    endurance_60: number;
+  };
+}
+
+export const analyticsApi = {
+  calculate1RM: (weight_kg: number, reps: number) =>
+    request<OneRMResult>('/analytics/1rm', {
+      method: 'POST',
+      body: JSON.stringify({ weight_kg, reps }),
+    }),
+};
+
