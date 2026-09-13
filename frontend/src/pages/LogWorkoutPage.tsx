@@ -308,12 +308,13 @@ export const LogWorkoutPage: React.FC = () => {
         </div>
         <div className="shrink-0">
           <div className="px-6 py-3 rounded-2xl bg-white/[0.05] border border-white/10 text-right backdrop-blur-md">
-            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
-              Session Volume
+            <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">
+              This Workout Volume
             </p>
             <p className="text-2xl font-black text-white font-mono mt-0.5">
-              {Math.round(currentVolume).toLocaleString()} kg
+              {Math.round(currentVolume).toLocaleString()} <span className="text-xs text-slate-400 font-normal">kg</span>
             </p>
+            <p className="text-[10px] text-slate-500">Live draft total</p>
           </div>
         </div>
       </div>

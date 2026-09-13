@@ -317,6 +317,9 @@ export const DashboardPage: React.FC = () => {
       grp.totalCalories = Math.round(grp.totalSets * 8.5 + grp.totalVolume * 0.08);
 
       for (const ex of grp.exercises) {
+        // Ensure sets are strictly ordered chronologically by their database insertion ID
+        ex.sets.sort((a, b) => (a.id || 0) - (b.id || 0));
+
         if (ex.isTimeBased) {
           const maxHold = Math.max(...ex.sets.map((s) => s.reps), 0);
           ex.bestMetric = maxHold >= 60 ? `${Math.floor(maxHold / 60)}m ${maxHold % 60}s` : `${maxHold}s`;

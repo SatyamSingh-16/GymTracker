@@ -95,7 +95,7 @@ func GetUserWorkouts(userID int) ([]models.WorkoutLog, error) {
 		LEFT JOIN workout_sets s ON w.id = s.workout_log_id
 		LEFT JOIN exercises e ON s.exercise_id = e.id
 		WHERE w.user_id = $1
-		ORDER BY w.workout_date DESC, w.id DESC, s.set_number ASC;
+		ORDER BY w.workout_date DESC, w.id ASC, s.set_number ASC;
 	`
 
 	rows, err := db.DB.Query(query, userID)
