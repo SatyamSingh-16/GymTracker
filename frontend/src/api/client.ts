@@ -1,4 +1,5 @@
-const BASE_URL = '/api';
+const API_BASE = import.meta.env.VITE_API_URL || '';
+const BASE_URL = `${API_BASE}/api`;
 
 export class ApiError extends Error {
   status: number;
@@ -13,7 +14,7 @@ export async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = localStorage.getItem('gymtracker_token');
+  const token = sessionStorage.getItem('gymtracker_token');
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -36,8 +37,8 @@ export async function request<T>(
     const errorMessage = data?.error || data?.message || `Request failed with status ${response.status}`;
     // If token expired or unauthorized, trigger session clean
     if (response.status === 401 && endpoint !== '/auth/login' && endpoint !== '/auth/register') {
-      localStorage.removeItem('gymtracker_token');
-      localStorage.removeItem('gymtracker_user');
+      sessionStorage.removeItem('gymtracker_token');
+      sessionStorage.removeItem('gymtracker_user');
       window.dispatchEvent(new Event('gymtracker_auth_logout'));
     }
     throw new ApiError(response.status, errorMessage);

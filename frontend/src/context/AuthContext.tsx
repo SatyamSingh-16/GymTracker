@@ -13,21 +13,27 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('gymtracker_token'));
+  // Purge any stale localStorage tokens from previous implementations
+  useEffect(() => {
+    localStorage.removeItem('gymtracker_token');
+    localStorage.removeItem('gymtracker_user');
+  }, []);
+
+  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('gymtracker_token'));
   const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('gymtracker_user');
+    const saved = sessionStorage.getItem('gymtracker_user');
     return saved ? JSON.parse(saved) : null;
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
     const verifyUser = async () => {
-      const storedToken = localStorage.getItem('gymtracker_token');
+      const storedToken = sessionStorage.getItem('gymtracker_token');
       if (storedToken) {
         try {
           const freshUser = await authApi.getMe();
           setUser(freshUser);
-          localStorage.setItem('gymtracker_user', JSON.stringify(freshUser));
+          sessionStorage.setItem('gymtracker_user', JSON.stringify(freshUser));
         } catch {
           // Token invalid/expired
           logout();
@@ -50,15 +56,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = (newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
-    localStorage.setItem('gymtracker_token', newToken);
-    localStorage.setItem('gymtracker_user', JSON.stringify(newUser));
+    sessionStorage.setItem('gymtracker_token', newToken);
+    // sessionStorage.setItem('gymtracker_user', JSON.stringify(newUser));
   };
 
   const logout = () => {
     setToken(null);
     setUser(null);
-    localStorage.removeItem('gymtracker_token');
-    localStorage.removeItem('gymtracker_user');
+    sessionStorage.removeItem('gymtracker_token');
+    sessionStorage.removeItem('gymtracker_user');
   };
 
   return (
