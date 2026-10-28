@@ -1,0 +1,24 @@
+# Render Blueprint for the GymTracker Go backend (the frontend stays on Vercel).
+# Create the PostgreSQL database first (see README "Deploying the Backend to Render"),
+# then apply this Blueprint and paste the database's Internal URL when prompted.
+services:
+  - type: web
+    name: gymtracker-api
+    runtime: docker
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    plan: free
+    region: singapore # must match the database's region for the Internal URL to work
+    healthCheckPath: /api/health
+    buildFilter:
+      paths:
+        - backend/**
+    envVars:
+      - key: DATABASE_URL
+        sync: false # paste the Render PostgreSQL "Internal Database URL"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://gym-tracker-six-tau.vercel.app
+      - key: GEMINI_API_KEY
+        sync: false # optional; without it the built-in coaching engine is used

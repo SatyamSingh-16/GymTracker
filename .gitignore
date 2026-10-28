@@ -3,6 +3,9 @@
 *.env
 !.env.example
 
+# Database dumps (contain user data and password hashes)
+*.dump
+
 # Go Binaries & Build artifacts
 *.exe
 *.exe~

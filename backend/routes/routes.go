@@ -1,6 +1,10 @@
 package routes
 
 import (
+	"log"
+	"os"
+	"strings"
+
 	"gymtracker-backend/handlers"
 	customMiddleware "gymtracker-backend/middleware"
 
@@ -17,13 +21,17 @@ func SetupRouter() *chi.Mux {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	// Configure CORS for Next.js frontend
+	// Configure CORS for the React frontend. Registered before any route so that
+	// preflight OPTIONS requests are answered for every endpoint. Auth uses a Bearer
+	// header (not cookies), so credentialed CORS is not needed.
+	origins := AllowedOrigins(os.Getenv("CORS_ALLOWED_ORIGINS"))
+	log.Printf("CORS allowed origins: %s", strings.Join(origins, ", "))
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:3001", "*"},
+		AllowedOrigins:   origins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: true,
+		AllowCredentials: false,
 		MaxAge:           300,
 	}))
 
@@ -63,4 +71,36 @@ func SetupRouter() *chi.Mux {
 	})
 
 	return r
+}
+
+// defaultAllowedOrigins covers local development when CORS_ALLOWED_ORIGINS is unset
+var defaultAllowedOrigins = []string{
+	"http://localhost:3000",
+	"http://localhost:3001",
+	"http://localhost:4173", // vite preview
+}
+
+// AllowedOrigins parses a comma-separated CORS_ALLOWED_ORIGINS value
+// (e.g. "https://gym-tracker.vercel.app,http://localhost:3000").
+// The "*" wildcard is ignored so the API never allows every origin by accident.
+func AllowedOrigins(raw string) []string {
+	var origins []string
+	for _, o := range strings.Split(raw, ",") {
+		o = strings.TrimRight(strings.TrimSpace(o), "/")
+		if o == "" {
+			continue
+		}
+		if o == "*" {
+			log.Println("⚠️ Warning: ignoring \"*\" in CORS_ALLOWED_ORIGINS; list the frontend origins explicitly")
+			continue
+		}
+		origins = append(origins, o)
+	}
+
+	if len(origins) == 0 {
+		// An empty list would make go-chi/cors allow all origins
+		log.Println("⚠️ Warning: CORS_ALLOWED_ORIGINS is not set; only local development origins are allowed")
+		return defaultAllowedOrigins
+	}
+	return origins
 }

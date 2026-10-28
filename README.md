@@ -193,15 +193,21 @@ DB_USER=your_postgres_username
 DB_PASSWORD=your_postgres_password
 DB_NAME=gymtracker
 DB_SSLMODE=disable
+# Hosted databases: set DATABASE_URL instead (takes precedence over DB_*)
+# DATABASE_URL=postgresql://user:password@host:5432/gymtracker
 
-# JWT Secret
-JWT_SECRET=super-secret-jwt-key-gymtracker-2026
+# JWT Secret (required - the server refuses to start without it)
+# Generate one with: openssl rand -hex 32
+JWT_SECRET=replace-with-a-long-random-secret
 
 # Internal gRPC Microservice Address
 ANALYTICS_GRPC_ADDR=127.0.0.1:50051
 
 # AI Coach (Optional - Google Gemini 1.5 Flash)
 GEMINI_API_KEY=your_gemini_api_key_here
+
+# CORS: frontend origins allowed to call the API (comma-separated, no "*")
+CORS_ALLOWED_ORIGINS=https://your-app.vercel.app,http://localhost:3000
 ```
 
 #### Frontend Configuration (`frontend/.env`):
@@ -211,6 +217,116 @@ VITE_API_URL=
 
 # In production (e.g. Vercel), set to your deployed backend URL:
 # VITE_API_URL=https://your-backend-api.com
+```
+
+> `vite build` **fails on purpose** if `VITE_API_URL` is missing, not `https://`, or points at localhost, so a broken API URL can never be deployed silently.
+
+---
+
+## ☁️ Production Deployment (Render + Vercel)
+
+```text
+Browser ──► Vercel (React SPA, https://gym-tracker-six-tau.vercel.app)
+   │
+   └──── HTTPS /api/* ──► Render Web Service (Docker: Go API + gRPC analytics on 127.0.0.1:50051)
+                                  │
+                                  └──► Render PostgreSQL (Internal Database URL)
+```
+
+The backend is deployed from [`backend/Dockerfile`](backend/Dockerfile) using the [`render.yaml`](render.yaml) Blueprint. One container runs the REST API (bound to all interfaces on Render's `PORT`) and the internal gRPC analytics service used by `/api/analytics/1rm`.
+
+> **Why not a Cloudflare Quick Tunnel?** `cloudflared tunnel --url ...` gets a random `*.trycloudflare.com` hostname that disappears whenever the tunnel drops (sleep, network change, reboot). Because Vite bakes `VITE_API_URL` into the bundle at build time, the deployed site then fails with `Failed to fetch` until it is rebuilt with the new URL.
+
+### Step 1: Create the PostgreSQL database on Render
+
+1. Render Dashboard → **New → Postgres**.
+2. Database name `gymtracker`, **PostgreSQL version 17** (matches the local `pg_dump` 17 used below), and the **same region** you will use for the web service (`render.yaml` uses `singapore`; change both if you prefer another).
+3. Once it is available, open its **Connections** section. You will need:
+   - **Internal Database URL**, used by the web service (`DATABASE_URL`)
+   - **External Database URL**, used only from your machine for the optional data migration
+
+> Render's free PostgreSQL instances expire after a limited period (check Render's current free-tier terms). Use a paid instance if the data must persist permanently.
+
+### Step 2 (optional): Copy existing local data to Render
+
+Skip this step to start with an empty database. The schema and the exercise catalog are created automatically on first boot.
+
+Do this **before** the web service first connects, into the **new, empty** database:
+
+```bash
+# Dump the local database OUTSIDE the repo (it contains user emails and password hashes)
+pg_dump --format=custom --no-owner --no-acl -d gymtracker -f ~/gymtracker-backup.dump
+
+# Paste the External Database URL without echoing it or saving it to shell history
+read -rs RENDER_DB_URL && export RENDER_DB_URL
+
+# Restore in a single transaction: either everything is copied or nothing is
+pg_restore --no-owner --no-acl --exit-on-error --single-transaction -d "$RENDER_DB_URL" ~/gymtracker-backup.dump
+
+# Spot-check
+psql "$RENDER_DB_URL" -c "select (select count(*) from users) users, (select count(*) from workout_logs) workouts;"
+```
+
+`pg_dump` only reads the local database, so your local data is never modified. Keep the `.dump` file private and delete it when you're done; `*.dump` is gitignored.
+
+### Step 3: Deploy the backend web service
+
+1. Render Dashboard → **New → Blueprint**, select this repository. Render reads `render.yaml`.
+2. When prompted, enter:
+   - `DATABASE_URL`: the database's **Internal Database URL**
+   - `GEMINI_API_KEY`: your Gemini key (optional; leave empty to use the built-in coaching engine)
+3. Render generates `JWT_SECRET` and sets `CORS_ALLOWED_ORIGINS` from the Blueprint. Deploy.
+4. Render builds the Docker image and only routes traffic once `GET /api/health` returns `200`. That endpoint returns `503` while PostgreSQL is unreachable.
+
+**Render environment variables**
+
+| Variable | Required | Value |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | Yes | Internal Database URL of the Render PostgreSQL instance |
+| `JWT_SECRET` | Yes | Long random string (Blueprint generates one). Never reuse a local/sample value |
+| `CORS_ALLOWED_ORIGINS` | Yes | `https://gym-tracker-six-tau.vercel.app` (comma-separate additional origins, no `*`) |
+| `GEMINI_API_KEY` | No | Google Gemini API key for the AI coach |
+| `PORT` | Auto | Injected by Render. Do not set |
+| `ANALYTICS_GRPC_ADDR` | No | Defaults to `127.0.0.1:50051` (in-container service) |
+
+Changing an environment variable on Render restarts the service; no rebuild is needed.
+
+**Database migrations** run automatically at every startup (`createTables` and `seedExercises` in [`backend/db/db.go`](backend/db/db.go)). They only use `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, idempotent category `UPDATE`s, and an upsert of the built-in exercise catalog by name. Nothing is dropped, truncated or deleted, so they are safe on an existing database and need no manual step. Run a single instance: two instances booting at the same moment against a brand-new database could race on table creation.
+
+**Free tier note:** free web services spin down when idle; the first request afterwards can take up to about a minute while the service starts. The frontend waits up to 60 seconds before reporting a timeout.
+
+### Step 4: Point the Vercel frontend at Render
+
+1. Copy the service URL shown at the top of the Render service page (`https://<service-name>.onrender.com`).
+2. Vercel → Project → **Settings → Environment Variables** → set `VITE_API_URL` to that URL (no trailing `/api` needed) for **Production** (and Preview if used).
+3. **Redeploy** (Deployments → latest → Redeploy). Vite inlines `VITE_API_URL` at build time, so the change has no effect until a new build runs. The site URL `https://gym-tracker-six-tau.vercel.app` stays the same.
+
+### Step 5: Verify
+
+```bash
+API=https://<service-name>.onrender.com
+
+curl -i "$API/api/health"         # 200 {"status":"ok","database":"ok",...}
+
+curl -si -X OPTIONS "$API/api/auth/login" \
+  -H 'Origin: https://gym-tracker-six-tau.vercel.app' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: content-type' | grep -i access-control-allow-origin
+```
+
+Then open the Vercel site with DevTools → Network: `POST https://<service-name>.onrender.com/api/auth/login` should return `401` for a wrong password and `200` for valid credentials. If you did not migrate data, register a new account first.
+
+### Backend Tests
+```bash
+cd backend
+go vet ./... && go test ./...
+```
+
+### Frontend Tests
+Uses Node's built-in test runner with native TypeScript support (Node.js 22.18+).
+```bash
+cd frontend
+npm test
 ```
 
 ---

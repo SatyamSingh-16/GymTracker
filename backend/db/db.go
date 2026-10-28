@@ -1,10 +1,13 @@
 package db
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -13,15 +16,22 @@ var DB *sql.DB
 
 // InitDB initializes PostgreSQL database connection pool, creates tables, and seeds initial data
 func InitDB() (*sql.DB, error) {
-	connStr := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		getEnv("DB_HOST", "localhost"),
-		getEnv("DB_PORT", "5432"),
-		getEnv("DB_USER", "postgres"),
-		getEnv("DB_PASSWORD", "postgres"),
-		getEnv("DB_NAME", "gymtracker"),
-		getEnv("DB_SSLMODE", "disable"),
-	)
+	// Hosted providers (e.g. Render) supply a single connection URL; it takes
+	// precedence over the individual DB_* variables used for local development.
+	connStr := os.Getenv("DATABASE_URL")
+	if connStr != "" {
+		log.Println("Connecting to PostgreSQL using DATABASE_URL")
+	} else {
+		connStr = fmt.Sprintf(
+			"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+			getEnv("DB_HOST", "localhost"),
+			getEnv("DB_PORT", "5432"),
+			getEnv("DB_USER", "postgres"),
+			getEnv("DB_PASSWORD", "postgres"),
+			getEnv("DB_NAME", "gymtracker"),
+			getEnv("DB_SSLMODE", "disable"),
+		)
+	}
 
 	var err error
 	DB, err = sql.Open("postgres", connStr)
@@ -184,6 +194,16 @@ func seedExercises() {
 		)
 	}
 	log.Printf("✅ Expanded exercise catalog seeded (%d total exercises)!", len(defaultExercises))
+}
+
+// Ping reports whether the database connection is usable (used by the health check)
+func Ping(ctx context.Context) error {
+	if DB == nil {
+		return errors.New("database not initialized")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return DB.PingContext(ctx)
 }
 
 func getEnv(key, fallback string) string {
